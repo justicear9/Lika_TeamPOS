@@ -1,0 +1,14 @@
+{
+    "name": "ApprovalWorkflow",
+    "alias": "approvalworkflow",
+    "description": "Transaction approval rules, approvers, and pending queue",
+    "keywords": [],
+    "active": 1,
+    "order": 0,
+    "providers": [
+        "Modules\\ApprovalWorkflow\\Providers\\ApprovalWorkflowServiceProvider"
+    ],
+    "aliases": {},
+    "files": [],
+    "requires": []
+}

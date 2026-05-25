@@ -1,0 +1,16 @@
+{
+    "name": "tabwins/approval-workflow",
+    "description": "Approval workflow module for TeamPOS",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\ApprovalWorkflow\\Providers\\ApprovalWorkflowServiceProvider"
+            ]
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\ApprovalWorkflow\\": ""
+        }
+    }
+}
