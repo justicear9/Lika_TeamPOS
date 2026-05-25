@@ -1,0 +1,2 @@
+[2026-03-21 12:52:27] live.EMERGENCY: ERROR: NOT ALLOWED: Mismatch between sold and purchase quantity. Product: DETTOL SOAP SKU: 0725 Quantity: 1 OR available stock has expired. Business: Tabwins Pharmacy Location: Tabwins Pharmacy  
+[2026-03-21 12:52:27] live.EMERGENCY: File:/home/team05/tabwins.teamjaketech.com/app/Utils/TransactionUtil.phpLine:3430Message:ERROR: NOT ALLOWED: Mismatch between sold and purchase quantity. Product: DETTOL SOAP SKU: 0725 Quantity: 1 OR available stock has expired.  
