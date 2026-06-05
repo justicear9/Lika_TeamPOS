@@ -17,14 +17,17 @@ class SellCreatedOrModified
 
     public $transaction;
 
+    public $isDeleted;
+
     /**
      * Create a new event instance.
      *
      * @return void
      */
-    public function __construct(Transaction $transaction)
+    public function __construct(Transaction $transaction, $isDeleted = false)
     {
         $this->transaction = $transaction;
+        $this->isDeleted = $isDeleted;
     }
 
     /**

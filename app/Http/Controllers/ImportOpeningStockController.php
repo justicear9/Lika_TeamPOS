@@ -221,8 +221,9 @@ class ImportOpeningStockController extends Controller
     {
         $user_id = request()->session()->get('user.id');
 
-        $transaction_date = request()->session()->get('financial_year.start');
-        $transaction_date = \Carbon::createFromFormat('Y-m-d', $transaction_date)->toDateTimeString();
+        // For imported opening stock, use current transaction date instead of
+        // forcing financial year start (which showed as Jan 1st).
+        $transaction_date = now()->toDateTimeString();
 
         //Get product tax
         $tax_percent = ! empty($product->tax_percent) ? $product->tax_percent : 0;

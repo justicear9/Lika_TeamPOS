@@ -8,6 +8,7 @@ use App\BusinessLocation;
 use App\CashDenomination;
 use App\Contact;
 use App\Currency;
+use App\Events\SellCreatedOrModified;
 use App\Events\TransactionPaymentAdded;
 use App\Events\TransactionPaymentDeleted;
 use App\Events\TransactionPaymentUpdated;
@@ -4906,6 +4907,7 @@ class TransactionUtil extends Util
                     $this->updateSalesOrderStatus($sales_order_ids);
                 }
 
+                SellCreatedOrModified::dispatch($transaction, true);
                 $transaction->delete();
             } else {
                 $business = Business::findOrFail($business_id);
@@ -4936,6 +4938,7 @@ class TransactionUtil extends Util
                 //Delete Cash register transactions
                 $transaction->cash_register_payments()->delete();
 
+                SellCreatedOrModified::dispatch($transaction, true);
                 $transaction->delete();
 
                 foreach ($transaction_payments as $payment) {

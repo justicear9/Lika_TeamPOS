@@ -55,6 +55,8 @@ class AccountingServiceProvider extends ServiceProvider
             \Modules\Accounting\Console\ImportChartOfAccountsCommand::class,
             \Modules\Accounting\Console\BackfillImportedSellAccountingCommand::class,
             \Modules\Accounting\Console\ImportJournalEntriesCommand::class,
+            \Modules\Accounting\Console\CleanOrphanGlCommand::class,
+            \Modules\Accounting\Console\RepostSellMapsCommand::class,
         ]);
     }
 

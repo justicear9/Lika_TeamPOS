@@ -48,6 +48,18 @@ class MapSellTransaction
             } catch (\Throwable $e) {
                 \Log::error('Accounting deleteMap failed', ['type' => 'sell', 'message' => $e->getMessage()]);
             }
+        } elseif ($event->transaction->status !== 'final') {
+            // Draft/quotation sales must not hit the GL until finalized.
+            try {
+                if (! $accountingUtil->deleteMap($business_id, $event->transaction->id, null)) {
+                    \Log::warning('Accounting: deleteMap skipped (period locked)', ['type' => 'sell', 'transaction_id' => $event->transaction->id]);
+                }
+                if (! $accountingUtil->deleteInventoryMap((int) $business_id, (int) $event->transaction->id)) {
+                    \Log::warning('Accounting: deleteInventoryMap skipped (period locked)', ['type' => 'sell', 'transaction_id' => $event->transaction->id]);
+                }
+            } catch (\Throwable $e) {
+                \Log::error('Accounting deleteMap failed', ['type' => 'sell', 'message' => $e->getMessage()]);
+            }
         } else {
             $sessionUserId = request()->hasSession() ? request()->session()->get('user.id') : null;
             if (! is_null($deposit_to) && ! is_null($payment_account)) {

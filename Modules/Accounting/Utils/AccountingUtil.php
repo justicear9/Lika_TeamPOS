@@ -618,6 +618,65 @@ class AccountingUtil extends Util
     }
 
     /**
+     * Remove GL lines that still reference deleted POS transactions.
+     *
+     * @return array{transaction_ids: int, lines_removed: int, skipped_locked: int}
+     */
+    public function purgeOrphanedTransactionGlLines(int $business_id): array
+    {
+        $accountIds = DB::table('accounting_accounts')
+            ->where('business_id', $business_id)
+            ->pluck('id');
+
+        if ($accountIds->isEmpty()) {
+            return ['transaction_ids' => 0, 'lines_removed' => 0, 'skipped_locked' => 0];
+        }
+
+        $orphanTransactionIds = DB::table('accounting_accounts_transactions as aat')
+            ->leftJoin('transactions as t', 't.id', '=', 'aat.transaction_id')
+            ->whereIn('aat.accounting_account_id', $accountIds)
+            ->whereNotNull('aat.transaction_id')
+            ->whereNull('aat.transaction_payment_id')
+            ->whereNull('t.id')
+            ->distinct()
+            ->pluck('aat.transaction_id');
+
+        $linesRemoved = 0;
+        $skippedLocked = 0;
+
+        foreach ($orphanTransactionIds as $transactionId) {
+            $transactionId = (int) $transactionId;
+            $before = AccountingAccountsTransaction::query()
+                ->whereIn('accounting_account_id', $accountIds)
+                ->where('transaction_id', $transactionId)
+                ->whereNull('transaction_payment_id')
+                ->count();
+
+            $mapDeleted = $this->deleteMap($business_id, $transactionId, null);
+            $inventoryDeleted = $this->deleteInventoryMap($business_id, $transactionId);
+            $returnDeleted = $this->deleteSellReturnMap($business_id, $transactionId);
+
+            $after = AccountingAccountsTransaction::query()
+                ->whereIn('accounting_account_id', $accountIds)
+                ->where('transaction_id', $transactionId)
+                ->whereNull('transaction_payment_id')
+                ->count();
+
+            if (! $mapDeleted || ! $inventoryDeleted || ! $returnDeleted) {
+                $skippedLocked++;
+            }
+
+            $linesRemoved += max(0, $before - $after);
+        }
+
+        return [
+            'transaction_ids' => $orphanTransactionIds->count(),
+            'lines_removed' => $linesRemoved,
+            'skipped_locked' => $skippedLocked,
+        ];
+    }
+
+    /**
      * Post sales return accounting on the credit note transaction: Dr inventory / Cr COGS for returned cost;
      * Dr sales returns / Cr A/R (location sale deposit_to) for the return total.
      */
@@ -737,6 +796,36 @@ class AccountingUtil extends Util
         }
 
         return true;
+    }
+
+    /**
+     * Sell GL amounts where gross credit minus discount debit equals final_total exactly.
+     *
+     * @return array{final_total: float, gross_credit: float, discount_debit: float, use_discount: bool}
+     */
+    protected function resolveSellMapAmounts(Transaction $transaction, int $business_id): array
+    {
+        $finalTotal = round((float) $transaction->final_total, 4);
+        $discTotal = $this->getTransactionDiscountTotal($transaction);
+        $settings = $this->getAccountingSettings($business_id);
+        $discAccountId = (int) ($settings['discount_applied_account_id'] ?? 0);
+        $useDiscount = $discTotal > self::JOURNAL_BALANCE_TOLERANCE
+            && $this->isValidBusinessAccount($business_id, $discAccountId);
+
+        if ($useDiscount) {
+            $grossCredit = round($finalTotal + $discTotal, 4);
+            $discTotal = round($grossCredit - $finalTotal, 4);
+        } else {
+            $grossCredit = $finalTotal;
+            $discTotal = 0.0;
+        }
+
+        return [
+            'final_total' => $finalTotal,
+            'gross_credit' => $grossCredit,
+            'discount_debit' => $discTotal,
+            'use_discount' => $useDiscount,
+        ];
     }
 
     /**
@@ -871,9 +960,15 @@ class AccountingUtil extends Util
             ? (int) ($settings['discount_received_account_id'] ?? 0)
             : (int) ($settings['discount_applied_account_id'] ?? 0);
 
-        $discountTotal = $this->getTransactionDiscountTotal($transaction);
-        $post = $discountTotal > self::JOURNAL_BALANCE_TOLERANCE
-            && $this->isValidBusinessAccount($business_id, $discountAccountId);
+        if ($type === 'sell') {
+            $sellAmounts = $this->resolveSellMapAmounts($transaction, $business_id);
+            $discountTotal = $sellAmounts['discount_debit'];
+            $post = $sellAmounts['use_discount'];
+        } else {
+            $discountTotal = $this->getTransactionDiscountTotal($transaction);
+            $post = $discountTotal > self::JOURNAL_BALANCE_TOLERANCE
+                && $this->isValidBusinessAccount($business_id, $discountAccountId);
+        }
 
         if (! $post) {
             if ($existing !== null) {
@@ -924,6 +1019,11 @@ class AccountingUtil extends Util
 
         if ($type == 'sell') {
             $transaction = Transaction::where('business_id', $business_id)->where('id', $id)->firstOrFail();
+
+            if ($transaction->status !== 'final') {
+                return $this->deleteMap($business_id, $id, null);
+            }
+
             $operation_date = \Carbon\Carbon::parse($transaction->transaction_date);
             $location_id = $transaction->location_id;
             $created_by = $user_id ?: ($transaction->created_by ?? 1);
@@ -932,14 +1032,9 @@ class AccountingUtil extends Util
                 return false;
             }
 
-            $finalTotal = (float) $transaction->final_total;
-            $settings = $this->getAccountingSettings($business_id);
-            $discTotal = $this->getTransactionDiscountTotal($transaction);
-            $discAccountId = (int) ($settings['discount_applied_account_id'] ?? 0);
-            $useDiscount = $discTotal > self::JOURNAL_BALANCE_TOLERANCE
-                && $this->isValidBusinessAccount($business_id, $discAccountId);
-            $paymentAmount = $useDiscount ? $finalTotal + $discTotal : $finalTotal;
-            $depositAmount = $finalTotal;
+            $sellAmounts = $this->resolveSellMapAmounts($transaction, $business_id);
+            $paymentAmount = $sellAmounts['gross_credit'];
+            $depositAmount = $sellAmounts['final_total'];
 
             $payment_data = [
                 'accounting_account_id' => $payment_account,
