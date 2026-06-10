@@ -29,6 +29,7 @@ class AccountingUtil extends Util
     public const MAP_TYPE_INVENTORY_SELL_ASSET = 'inventory_sell_asset';
     public const MAP_TYPE_PURCHASE_DISCOUNT_RECEIVED = 'purchase_discount_received';
     public const MAP_TYPE_PURCHASE_FREIGHT_IMPORT = 'purchase_freight_import';
+    public const MAP_TYPE_PURCHASE_FREIGHT_CAPITALIZE = 'purchase_freight_capitalize';
     public const MAP_TYPE_SELL_DISCOUNT_APPLIED = 'sell_discount_applied';
 
     public const MAP_TYPE_SELL_RETURN_INVENTORY_ASSET = 'sell_return_inventory_asset';
@@ -553,6 +554,7 @@ class AccountingUtil extends Util
         $mapTypes = [
             self::MAP_TYPE_INVENTORY_PURCHASE_ASSET,
             self::MAP_TYPE_INVENTORY_PURCHASE_OFFSET,
+            self::MAP_TYPE_PURCHASE_FREIGHT_CAPITALIZE,
             self::MAP_TYPE_INVENTORY_SELL_COGS,
             self::MAP_TYPE_INVENTORY_SELL_ASSET,
         ];
@@ -977,6 +979,20 @@ class AccountingUtil extends Util
     }
 
     /**
+     * Freight allocated to stock lines (capitalized into inventory; relieved to COGS on sale).
+     */
+    protected function getPurchaseStockFreightOnStockLines(Transaction $transaction): float
+    {
+        $sum = (float) DB::table('purchase_lines as pl')
+            ->join('products as p', 'p.id', '=', 'pl.product_id')
+            ->where('pl.transaction_id', (int) $transaction->id)
+            ->where('p.enable_stock', 1)
+            ->sum(DB::raw('COALESCE(pl.freight_allocation, 0)'));
+
+        return round($sum, 4);
+    }
+
+    /**
      * Post or remove discount map line for purchase (credit discount received) or sell (debit discount applied).
      *
      * @return bool false if period lock prevents change
@@ -1386,6 +1402,11 @@ class AccountingUtil extends Util
         }
 
         $createdBy = (int) ($user_id ?: ($transaction->created_by ?? 1));
+        $freightAccountId = (int) ($settings['freight_import_account_id'] ?? 0);
+        $stockFreight = $this->isValidBusinessAccount($business_id, $freightAccountId)
+            ? min($amount, $this->getPurchaseStockFreightOnStockLines($transaction))
+            : 0.0;
+        $goodsOffset = round(max(0.0, $amount - $stockFreight), 4);
 
         AccountingAccountsTransaction::updateOrCreateMapTransaction([
             'accounting_account_id' => $inventoryAccountId,
@@ -1409,11 +1430,49 @@ class AccountingUtil extends Util
             'accounting_account_id' => $creditAccountId,
             'transaction_id' => $transaction_id,
             'transaction_payment_id' => null,
-            'amount' => $amount,
+            'amount' => $goodsOffset,
             'type' => 'credit',
             'sub_type' => 'purchase',
             'note' => $offsetNote,
             'map_type' => self::MAP_TYPE_INVENTORY_PURCHASE_OFFSET,
+            'created_by' => $createdBy,
+            'operation_date' => $operation_date,
+            'location_id' => $transaction->location_id,
+        ]);
+
+        $existingFreightCap = AccountingAccountsTransaction::query()
+            ->where('transaction_id', $transaction_id)
+            ->whereNull('transaction_payment_id')
+            ->where('map_type', self::MAP_TYPE_PURCHASE_FREIGHT_CAPITALIZE)
+            ->whereIn('accounting_account_id', DB::table('accounting_accounts')
+                ->where('business_id', $business_id)
+                ->pluck('id'))
+            ->first();
+
+        if ($stockFreight <= self::JOURNAL_BALANCE_TOLERANCE) {
+            if ($existingFreightCap !== null) {
+                if ($this->isOperationDateLocked($business_id, $existingFreightCap->operation_date)) {
+                    return false;
+                }
+                $existingFreightCap->delete();
+            }
+
+            return true;
+        }
+
+        if ($existingFreightCap !== null && $this->isOperationDateLocked($business_id, $existingFreightCap->operation_date)) {
+            return false;
+        }
+
+        AccountingAccountsTransaction::updateOrCreateMapTransaction([
+            'accounting_account_id' => $freightAccountId,
+            'transaction_id' => $transaction_id,
+            'transaction_payment_id' => null,
+            'amount' => $stockFreight,
+            'type' => 'credit',
+            'sub_type' => 'purchase',
+            'note' => 'Freight capitalized into inventory (auto)',
+            'map_type' => self::MAP_TYPE_PURCHASE_FREIGHT_CAPITALIZE,
             'created_by' => $createdBy,
             'operation_date' => $operation_date,
             'location_id' => $transaction->location_id,
