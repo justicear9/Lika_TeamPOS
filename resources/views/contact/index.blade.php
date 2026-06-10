@@ -175,6 +175,7 @@
                                     <th>@lang('lang_v1.customer_group')</th>
                                     <th>@lang('business.address')</th>
                                     <th>@lang('contact.mobile')</th>
+                                    <th>@lang('lang_v1.last_sale_date')</th>
                                     <th>@lang('contact.total_sale_due')</th>
                                     <th>@lang('lang_v1.total_sell_return_due')</th>
                                 @endif
@@ -215,35 +216,46 @@
                         </thead>
                         <tfoot>
                             <tr class="bg-gray font-17 text-center footer-total">
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td @if ($type == 'supplier') colspan="6"
-                            @elseif($type == 'customer')
-                                @if ($reward_enabled)
-                                    colspan="9"
-                                @else
-                                    colspan="8" @endif
-                                    @endif>
-                                    <strong>
-                                        @lang('sale.total'):
-                                    </strong>
-                                </td>
-                                <td class="footer_contact_due"></td>
-                                <td class="footer_contact_return_due"></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
+                                @if ($type == 'supplier')
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td colspan="6">
+                                        <strong>@lang('sale.total'):</strong>
+                                    </td>
+                                    <td class="footer_contact_due"></td>
+                                    <td class="footer_contact_return_due"></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                @elseif($type == 'customer')
+                                    @php
+                                        $customer_footer_cols = $reward_enabled ? 28 : 27;
+                                        $customer_due_col = $reward_enabled ? 16 : 15;
+                                        $customer_return_col = $customer_due_col + 1;
+                                    @endphp
+                                    @for ($i = 0; $i < $customer_footer_cols; $i++)
+                                        @if ($i === 6)
+                                            <td><strong>@lang('sale.total'):</strong></td>
+                                        @elseif ($i === $customer_due_col)
+                                            <td class="footer_contact_due"></td>
+                                        @elseif ($i === $customer_return_col)
+                                            <td class="footer_contact_return_due"></td>
+                                        @else
+                                            <td></td>
+                                        @endif
+                                    @endfor
+                                @endif
                             </tr>
                         </tfoot>
                     </table>

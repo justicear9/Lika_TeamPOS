@@ -423,6 +423,7 @@ $(document).ready(function() {
         Array.prototype.push.apply(columns, [{ data: 'customer_group', name: 'cg.name' },
             { data: 'address', name: 'address', orderable: false },
             { data: 'mobile', name: 'mobile' },
+            { data: 'last_sale_date', name: 'last_sale_date', searchable: false },
             { data: 'due', searchable: false, orderable: false },
             { data: 'return_due', searchable: false, orderable: false },
             { data: 'custom_field1', name: 'custom_field1'},

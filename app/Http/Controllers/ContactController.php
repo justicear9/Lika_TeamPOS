@@ -497,6 +497,11 @@ class ContactController extends Controller
                 return $name;
             })
             ->editColumn('total_rp', '{{$total_rp ?? 0}}')
+            ->editColumn('last_sale_date', function ($row) {
+                return ! empty($row->last_sale_date)
+                    ? $this->transactionUtil->format_date($row->last_sale_date)
+                    : '';
+            })
             ->editColumn('created_at', '{{@format_date($created_at)}}')
             ->removeColumn('total_invoice')
             ->removeColumn('opening_balance_paid')

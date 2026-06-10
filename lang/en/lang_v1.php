@@ -81,6 +81,7 @@ return [
     'disable_order_tax' => 'Disable order tax',
     'customer_groups' => 'Customer Groups',
     'customer_group' => 'Customer Group',
+    'last_sale_date' => 'Last Sale Date',
     'all_your_customer_groups' => 'All Customer Groups',
     'add_customer_group' => 'Add Customer Group',
     'customer_group_name' => 'Customer Group Name',
