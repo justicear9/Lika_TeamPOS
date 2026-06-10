@@ -475,6 +475,7 @@ return [
     '91_and_over_past_due' => '91 days and over past due',
     'ageing_bucket' => 'Age bucket',
     'bucket_total' => 'Total for :bucket',
+    'due_on_invoice' => 'Due on invoice',
     'map_transactions_help' => 'Set default accounts to which transactions will be automatically mapped. Mappings are by transaction type (e.g. sale invoice, sell payment, purchase, purchase payment, expense)—not by POS payment method (cash, card, etc.). All sale payments use the same “Sales payments” pair unless you map payments manually from Accounting → Map transactions.',
     'add_more_row' => 'Add more row',
     'profit_and_loss' => 'Profit and Loss',

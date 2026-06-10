@@ -79,15 +79,9 @@ class AccountingUtil extends Util
             $query->where('transactions.location_id', $location_id);
         }
 
-        $dueDateExpression = 'CASE
-            WHEN COALESCE(transactions.pay_term_type, c.pay_term_type) = "days"
-                AND COALESCE(transactions.pay_term_number, c.pay_term_number) IS NOT NULL
-            THEN DATE_ADD(transactions.transaction_date, INTERVAL COALESCE(transactions.pay_term_number, c.pay_term_number) DAY)
-            WHEN COALESCE(transactions.pay_term_type, c.pay_term_type) = "months"
-                AND COALESCE(transactions.pay_term_number, c.pay_term_number) IS NOT NULL
-            THEN DATE_ADD(transactions.transaction_date, INTERVAL COALESCE(transactions.pay_term_number, c.pay_term_number) MONTH)
-            ELSE transactions.transaction_date
-        END';
+        $dueDateExpression = $this->buildAgeingDueDateSqlExpression();
+        $effectivePayTermTypeSql = $this->buildEffectivePayTermTypeSql();
+        $effectivePayTermNumberSql = $this->buildEffectivePayTermNumberSql();
 
         $dues = $query->whereIn('transactions.payment_status', ['partial', 'due'])
                 ->join('contacts as c', 'c.id', '=', 'transactions.contact_id')
@@ -98,16 +92,16 @@ class AccountingUtil extends Util
                             '.$dueDateExpression.'
                         ) as diff'
                     ),
-                    DB::raw('SUM(transactions.final_total - 
+                    DB::raw('(transactions.final_total - 
                         (SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0) 
-                        FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id) )  
+                        FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id))  
                         as total_due'),
-
                     DB::raw('CASE
                         WHEN c.name IS NOT NULL AND c.name <> "" THEN c.name
                         WHEN c.supplier_business_name IS NOT NULL AND c.supplier_business_name <> "" THEN c.supplier_business_name
                         ELSE CONCAT("Contact #", COALESCE(transactions.contact_id, 0))
                     END as contact_name'),
+                    'transactions.id as transaction_id',
                     'transactions.contact_id',
                     'transactions.invoice_no',
                     'transactions.ref_no',
@@ -115,10 +109,9 @@ class AccountingUtil extends Util
                     DB::raw($dueDateExpression.' as due_date'),
                     'c.pay_term_number as contact_pay_term_number',
                     'c.pay_term_type as contact_pay_term_type',
-                    DB::raw('COALESCE(transactions.pay_term_number, c.pay_term_number) as pay_term_number'),
-                    DB::raw('COALESCE(transactions.pay_term_type, c.pay_term_type) as pay_term_type')
+                    DB::raw($effectivePayTermNumberSql.' as pay_term_number'),
+                    DB::raw($effectivePayTermTypeSql.' as pay_term_type')
                 )
-                ->groupBy('transactions.id')
                 ->get();
 
         $report_details = [];
@@ -137,19 +130,8 @@ class AccountingUtil extends Util
                     ];
                 }
 
-                if ($due->diff < 1) {
-                    $report_details[$due->contact_id]['<1'] += $due->total_due;
-                } elseif ($due->diff >= 1 && $due->diff <= 30) {
-                    $report_details[$due->contact_id]['1_30'] += $due->total_due;
-                } elseif ($due->diff >= 31 && $due->diff <= 60) {
-                    $report_details[$due->contact_id]['31_60'] += $due->total_due;
-                } elseif ($due->diff >= 61 && $due->diff <= 90) {
-                    $report_details[$due->contact_id]['61_90'] += $due->total_due;
-                } elseif ($due->diff > 90) {
-                    $report_details[$due->contact_id]['>90'] += $due->total_due;
-                }
-
-                $report_details[$due->contact_id]['total_due'] += $due->total_due;
+                $daysPastDue = $this->resolveAgeingDaysPastDue($due->diff, $due->transaction_date, $due->due_date, $today);
+                $this->addToAgeingContactBuckets($report_details[$due->contact_id], (float) $due->total_due, $daysPastDue);
             }
         } elseif ($group_by == 'due_date') {
             $report_details = [
@@ -160,6 +142,7 @@ class AccountingUtil extends Util
                 '>90' => [],
             ];
             foreach ($dues as $due) {
+                $daysPastDue = $this->resolveAgeingDaysPastDue($due->diff, $due->transaction_date, $due->due_date, $today);
                 $temp_array = [
                     'transaction_date' => $this->format_date($due->transaction_date),
                     'due_date' => $this->format_date($due->due_date),
@@ -169,17 +152,7 @@ class AccountingUtil extends Util
                     'pay_term' => $this->formatPayTerm($due->pay_term_number, $due->pay_term_type),
                     'due' => $due->total_due,
                 ];
-                if ($due->diff < 1) {
-                    $report_details['current'][] = $temp_array;
-                } elseif ($due->diff >= 1 && $due->diff <= 30) {
-                    $report_details['1_30'][] = $temp_array;
-                } elseif ($due->diff >= 31 && $due->diff <= 60) {
-                    $report_details['31_60'][] = $temp_array;
-                } elseif ($due->diff >= 61 && $due->diff <= 90) {
-                    $report_details['61_90'][] = $temp_array;
-                } elseif ($due->diff > 90) {
-                    $report_details['>90'][] = $temp_array;
-                }
+                $this->addToAgeingDetailBuckets($report_details, $temp_array, $daysPastDue);
             }
         }
 
@@ -187,12 +160,89 @@ class AccountingUtil extends Util
     }
 
     /**
+     * SQL due date for ageing: transaction/contact pay term when set, otherwise invoice date (due on receipt).
+     */
+    protected function buildAgeingDueDateSqlExpression(): string
+    {
+        $payTermType = $this->buildEffectivePayTermTypeSql();
+        $payTermNumber = $this->buildEffectivePayTermNumberSql();
+
+        return 'CASE
+            WHEN '.$payTermType.' = "days"
+                AND '.$payTermNumber.' IS NOT NULL
+            THEN DATE_ADD(DATE(transactions.transaction_date), INTERVAL '.$payTermNumber.' DAY)
+            WHEN '.$payTermType.' = "months"
+                AND '.$payTermNumber.' IS NOT NULL
+            THEN DATE_ADD(DATE(transactions.transaction_date), INTERVAL '.$payTermNumber.' MONTH)
+            ELSE DATE(transactions.transaction_date)
+        END';
+    }
+
+    protected function buildEffectivePayTermTypeSql(): string
+    {
+        return 'NULLIF(COALESCE(NULLIF(transactions.pay_term_type, ""), NULLIF(c.pay_term_type, "")), "")';
+    }
+
+    protected function buildEffectivePayTermNumberSql(): string
+    {
+        return 'NULLIF(COALESCE(NULLIF(transactions.pay_term_number, 0), NULLIF(c.pay_term_number, 0)), 0)';
+    }
+
+    protected function resolveAgeingDaysPastDue($diff, $transaction_date, $due_date, string $today): int
+    {
+        if ($diff !== null && $diff !== '') {
+            return (int) $diff;
+        }
+
+        $dueDay = $due_date ?: $transaction_date;
+        if (empty($dueDay)) {
+            return 0;
+        }
+
+        $dueDayString = \Carbon\Carbon::parse($dueDay)->format('Y-m-d');
+
+        return (int) floor((strtotime($today) - strtotime($dueDayString)) / 86400);
+    }
+
+    protected function addToAgeingContactBuckets(array &$contactRow, float $amount, int $daysPastDue): void
+    {
+        if ($daysPastDue < 1) {
+            $contactRow['<1'] += $amount;
+        } elseif ($daysPastDue <= 30) {
+            $contactRow['1_30'] += $amount;
+        } elseif ($daysPastDue <= 60) {
+            $contactRow['31_60'] += $amount;
+        } elseif ($daysPastDue <= 90) {
+            $contactRow['61_90'] += $amount;
+        } else {
+            $contactRow['>90'] += $amount;
+        }
+
+        $contactRow['total_due'] += $amount;
+    }
+
+    protected function addToAgeingDetailBuckets(array &$report_details, array $row, int $daysPastDue): void
+    {
+        if ($daysPastDue < 1) {
+            $report_details['current'][] = $row;
+        } elseif ($daysPastDue <= 30) {
+            $report_details['1_30'][] = $row;
+        } elseif ($daysPastDue <= 60) {
+            $report_details['31_60'][] = $row;
+        } elseif ($daysPastDue <= 90) {
+            $report_details['61_90'][] = $row;
+        } else {
+            $report_details['>90'][] = $row;
+        }
+    }
+
+    /**
      * Human-readable payment term (contact or transaction level).
      */
     public function formatPayTerm($pay_term_number, $pay_term_type): string
     {
-        if ($pay_term_number === null || $pay_term_number === '' || empty($pay_term_type)) {
-            return '-';
+        if ($pay_term_number === null || $pay_term_number === '' || (int) $pay_term_number <= 0 || empty($pay_term_type)) {
+            return __('accounting::lang.due_on_invoice');
         }
 
         $type_label = $pay_term_type === 'months'
