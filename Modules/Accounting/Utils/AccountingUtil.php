@@ -28,6 +28,7 @@ class AccountingUtil extends Util
     public const MAP_TYPE_INVENTORY_SELL_COGS = 'inventory_sell_cogs';
     public const MAP_TYPE_INVENTORY_SELL_ASSET = 'inventory_sell_asset';
     public const MAP_TYPE_PURCHASE_DISCOUNT_RECEIVED = 'purchase_discount_received';
+    public const MAP_TYPE_PURCHASE_FREIGHT_IMPORT = 'purchase_freight_import';
     public const MAP_TYPE_SELL_DISCOUNT_APPLIED = 'sell_discount_applied';
 
     public const MAP_TYPE_SELL_RETURN_INVENTORY_ASSET = 'sell_return_inventory_asset';
@@ -503,6 +504,7 @@ class AccountingUtil extends Util
             'payment_account',
             'deposit_to',
             self::MAP_TYPE_PURCHASE_DISCOUNT_RECEIVED,
+            self::MAP_TYPE_PURCHASE_FREIGHT_IMPORT,
             self::MAP_TYPE_SELL_DISCOUNT_APPLIED,
         ];
 
@@ -829,6 +831,54 @@ class AccountingUtil extends Util
     }
 
     /**
+     * @return array{
+     *     ap_credit: float,
+     *     goods_debit: float,
+     *     freight_debit: float,
+     *     use_freight: bool,
+     *     use_discount: bool,
+     *     discount_credit: float
+     * }
+     */
+    protected function resolvePurchaseMapAmounts(Transaction $transaction, int $business_id): array
+    {
+        $finalTotal = round((float) $transaction->final_total, 4);
+        $shipping = round((float) $transaction->shipping_charges, 4);
+        $goodsNet = round(max(0.0, $finalTotal - $shipping), 4);
+
+        $discTotal = $this->getTransactionDiscountTotal($transaction);
+        $settings = $this->getAccountingSettings($business_id);
+        $discAccountId = (int) ($settings['discount_received_account_id'] ?? 0);
+        $freightAccountId = (int) ($settings['freight_import_account_id'] ?? 0);
+
+        $useDiscount = $discTotal > self::JOURNAL_BALANCE_TOLERANCE
+            && $this->isValidBusinessAccount($business_id, $discAccountId);
+        $useFreight = $shipping > self::JOURNAL_BALANCE_TOLERANCE
+            && $this->isValidBusinessAccount($business_id, $freightAccountId);
+
+        if ($useFreight) {
+            $goodsDebit = $useDiscount ? round($goodsNet + $discTotal, 4) : $goodsNet;
+            if ($useDiscount) {
+                $discTotal = round($goodsDebit - $goodsNet, 4);
+            }
+        } else {
+            $goodsDebit = $useDiscount ? round($finalTotal + $discTotal, 4) : $finalTotal;
+            if ($useDiscount) {
+                $discTotal = round($goodsDebit - $finalTotal, 4);
+            }
+        }
+
+        return [
+            'ap_credit' => $finalTotal,
+            'goods_debit' => $goodsDebit,
+            'freight_debit' => $useFreight ? $shipping : 0.0,
+            'use_freight' => $useFreight,
+            'use_discount' => $useDiscount,
+            'discount_credit' => $useDiscount ? $discTotal : 0.0,
+        ];
+    }
+
+    /**
      * Total invoice discount: header (transaction) + line discounts for purchase or sell.
      */
     public function getTransactionDiscountTotal(Transaction $transaction): float
@@ -1010,6 +1060,72 @@ class AccountingUtil extends Util
     }
 
     /**
+     * Post or remove purchase freight on the import freight account (401 by default).
+     *
+     * @return bool false if period lock prevents change
+     */
+    protected function syncFreightMapForTransaction(
+        Transaction $transaction,
+        int $business_id,
+        ?int $user_id,
+        \Carbon\Carbon $operation_date,
+        int $location_id,
+        ?string $note
+    ): bool {
+        $mapType = self::MAP_TYPE_PURCHASE_FREIGHT_IMPORT;
+
+        $accountIds = DB::table('accounting_accounts')
+            ->where('business_id', $business_id)
+            ->pluck('id');
+
+        $existing = AccountingAccountsTransaction::query()
+            ->where('transaction_id', $transaction->id)
+            ->whereNull('transaction_payment_id')
+            ->where('map_type', $mapType)
+            ->whereIn('accounting_account_id', $accountIds)
+            ->first();
+
+        $amounts = $this->resolvePurchaseMapAmounts($transaction, $business_id);
+        $settings = $this->getAccountingSettings($business_id);
+        $freightAccountId = (int) ($settings['freight_import_account_id'] ?? 0);
+
+        if (! $amounts['use_freight']) {
+            if ($existing !== null) {
+                if ($this->isOperationDateLocked($business_id, $existing->operation_date)) {
+                    return false;
+                }
+                AccountingAccountsTransaction::query()
+                    ->where('id', $existing->id)
+                    ->delete();
+            }
+
+            return true;
+        }
+
+        if ($existing !== null && $this->isOperationDateLocked($business_id, $existing->operation_date)) {
+            return false;
+        }
+
+        $createdBy = (int) ($user_id ?: ($transaction->created_by ?? 1));
+
+        AccountingAccountsTransaction::updateOrCreateMapTransaction([
+            'accounting_account_id' => $freightAccountId,
+            'transaction_id' => (int) $transaction->id,
+            'transaction_payment_id' => null,
+            'amount' => $amounts['freight_debit'],
+            'type' => 'debit',
+            'sub_type' => 'purchase',
+            'note' => $note ?: 'Purchase freight / clearing (auto)',
+            'map_type' => $mapType,
+            'created_by' => $createdBy,
+            'operation_date' => $operation_date,
+            'location_id' => $location_id,
+        ]);
+
+        return true;
+    }
+
+    /**
      * @return bool false when period lock prevents posting
      */
     public function saveMap($type, $id, $user_id, $business_id, $deposit_to, $payment_account, $note = null)
@@ -1112,14 +1228,9 @@ class AccountingUtil extends Util
                 return false;
             }
 
-            $finalTotal = (float) $transaction->final_total;
-            $settings = $this->getAccountingSettings($business_id);
-            $discTotal = $this->getTransactionDiscountTotal($transaction);
-            $discAccountId = (int) ($settings['discount_received_account_id'] ?? 0);
-            $useDiscount = $discTotal > self::JOURNAL_BALANCE_TOLERANCE
-                && $this->isValidBusinessAccount($business_id, $discAccountId);
-            $depositAmount = $useDiscount ? $finalTotal + $discTotal : $finalTotal;
-            $paymentAmount = $finalTotal;
+            $purchaseAmounts = $this->resolvePurchaseMapAmounts($transaction, $business_id);
+            $paymentAmount = $purchaseAmounts['ap_credit'];
+            $depositAmount = $purchaseAmounts['goods_debit'];
 
             $payment_data = [
                 'accounting_account_id' => $payment_account,
@@ -1200,6 +1311,21 @@ class AccountingUtil extends Util
             if (! $this->syncDiscountMapForTransaction(
                 $txn,
                 $type,
+                $business_id,
+                $user_id,
+                $opDate,
+                (int) $txn->location_id,
+                $note
+            )) {
+                return false;
+            }
+        }
+
+        if ($type === 'purchase') {
+            $txn = Transaction::where('business_id', $business_id)->where('id', $id)->firstOrFail();
+            $opDate = \Carbon\Carbon::parse($txn->transaction_date);
+            if (! $this->syncFreightMapForTransaction(
+                $txn,
                 $business_id,
                 $user_id,
                 $opDate,

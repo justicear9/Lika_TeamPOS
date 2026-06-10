@@ -92,6 +92,9 @@
 							$inventory_adjustment_account = !empty($accounting_settings['inventory_adjustment_account_id'])
 								? \Modules\Accounting\Entities\AccountingAccount::find($accounting_settings['inventory_adjustment_account_id'])
 								: null;
+							$freight_import_account = !empty($accounting_settings['freight_import_account_id'])
+								? \Modules\Accounting\Entities\AccountingAccount::find($accounting_settings['freight_import_account_id'])
+								: null;
 							$discount_received_account = !empty($accounting_settings['discount_received_account_id'])
 								? \Modules\Accounting\Entities\AccountingAccount::find($accounting_settings['discount_received_account_id'])
 								: null;
@@ -163,6 +166,30 @@
 										[
 											'class' => 'form-control accounts-dropdown width-100',
 											'placeholder' => __('accounting::lang.inventory_adjustment_account')
+										]
+									) !!}
+								</div>
+							</div>
+						</div>
+
+						<div class="row">
+							<div class="col-md-12">
+								<h4>@lang('accounting::lang.freight_posting_settings')</h4>
+								<p class="help-block">
+									@lang('accounting::lang.freight_posting_settings_help')
+								</p>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									{!! Form::label('freight_import_account_id', __('accounting::lang.freight_import_account') . ':' ) !!}
+									@show_tooltip(__('accounting::lang.freight_import_account_help'))
+									{!! Form::select(
+										'freight_import_account_id',
+										!is_null($freight_import_account) ? [$freight_import_account->id => $freight_import_account->name] : [],
+										$freight_import_account->id ?? null,
+										[
+											'class' => 'form-control accounts-dropdown width-100',
+											'placeholder' => __('accounting::lang.freight_import_account')
 										]
 									) !!}
 								</div>

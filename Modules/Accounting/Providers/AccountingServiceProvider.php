@@ -32,7 +32,10 @@ class AccountingServiceProvider extends ServiceProvider
         $this->app['events']->listen(\App\Events\TransactionPaymentDeleted::class, 
         \Modules\Accounting\Listeners\MapPaymentTransaction::class);
 
-        $this->app['events']->listen(\App\Events\PurchaseCreatedOrModified::class, 
+        $this->app['events']->listen(\App\Events\PurchaseCreatedOrModified::class,
+        \Modules\Accounting\Listeners\AllocatePurchaseFreightListener::class);
+
+        $this->app['events']->listen(\App\Events\PurchaseCreatedOrModified::class,
         \Modules\Accounting\Listeners\MapPurchaseTransaction::class);
 
         $this->app['events']->listen(\App\Events\ExpenseCreatedOrModified::class, 
@@ -57,6 +60,7 @@ class AccountingServiceProvider extends ServiceProvider
             \Modules\Accounting\Console\ImportJournalEntriesCommand::class,
             \Modules\Accounting\Console\CleanOrphanGlCommand::class,
             \Modules\Accounting\Console\RepostSellMapsCommand::class,
+            \Modules\Accounting\Console\RepostPurchaseMapsCommand::class,
         ]);
     }
 

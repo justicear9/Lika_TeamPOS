@@ -144,6 +144,7 @@ class SettingsController extends Controller
                 'inventory_cogs_account_id',
                 'direct_costs_account_id',
                 'discount_received_account_id',
+                'freight_import_account_id',
                 'discount_applied_account_id',
                 'inventory_adjustment_account_id',
                 'sales_return_account_id',
