@@ -1,277 +1,176 @@
-<table style="width:100%;">
+<table style="width:100%; color:#000;">
 	<thead>
 		<tr>
 			<td>
-
-			<p class="text-right color-555 font-30">
-              <b>@lang('lang_v1.delivery_note')</b>
-			</p>
-
+				<p class="text-center" style="font-size:22px; font-weight:700; letter-spacing:0.5px; margin:0 0 4px 0; text-transform:uppercase;">
+					@lang('lang_v1.delivery_note')
+				</p>
+				@if(!empty($receipt_details->business_name))
+					<p class="text-center" style="font-size:18px; font-weight:700; margin:0 0 16px 0;">
+						{{ $receipt_details->business_name }}
+					</p>
+				@endif
 			</td>
 		</tr>
 	</thead>
-
 	<tbody>
 		<tr>
 			<td>
 
-<!-- business information here -->
-<div class="row invoice-info">
-
-	<div class="col-md-6 invoice-col width-50 color-555">
-		
-		<!-- Logo -->
+<div class="row invoice-info" style="margin-bottom:12px;">
+	<div class="col-md-5 invoice-col width-50">
 		@if(!empty($receipt_details->logo))
-			<img style="max-height: 120px; width: auto;" src="{{$receipt_details->logo}}" class="img">
-			<br/>
+			<img style="max-height:90px; width:auto; margin-bottom:8px;" src="{{ $receipt_details->logo }}" class="img" alt="">
 		@endif
-
-		<!-- Shop & Location Name  -->
-		@if(!empty($receipt_details->display_name))
-			<p><span style="font-size:24px; font-weight:900; color:black;">
-				{{$receipt_details->display_name}}</span>
-				@if(!empty($receipt_details->address))
-					<br/>{!! $receipt_details->address !!}
-				@endif
-
-				@if(!empty($receipt_details->contact))
-					<br/>{!! $receipt_details->contact !!}
-				@endif
-
-				@if(!empty($receipt_details->website))
-					<br/>{{ $receipt_details->website }}
-				@endif
-
-				@if(!empty($receipt_details->tax_info1))
-					<br/>{{ $receipt_details->tax_label1 }} {{ $receipt_details->tax_info1 }}
-				@endif
-
-				@if(!empty($receipt_details->tax_info2))
-					<br/>{{ $receipt_details->tax_label2 }} {{ $receipt_details->tax_info2 }}
-				@endif
-
-				@if(!empty($receipt_details->location_custom_fields))
-					<br/>{{ $receipt_details->location_custom_fields }}
-				@endif
-			</p>
+		@if(!empty($receipt_details->location_name))
+			<p style="margin:0 0 4px 0;"><strong>@lang('lang_v1.waybill_delivery_site'):</strong> {{ $receipt_details->location_name }}</p>
+		@endif
+		@if(!empty($receipt_details->address))
+			<p style="margin:0;">{!! $receipt_details->address !!}</p>
 		@endif
 	</div>
 
-	<div class="col-md-6 invoice-col width-50">
-
-		<p class="text-right font-17">
-			@if(!empty($receipt_details->invoice_no_prefix))
-				<span class="pull-left">{!! $receipt_details->invoice_no_prefix !!}</span>
-			@endif
-
-			{{$receipt_details->invoice_no}}
-		</p>
-		<!-- Date-->
-		@if(!empty($receipt_details->date_label))
-			<p class="text-right font-17">
-				<span class="pull-left">
-					{{$receipt_details->date_label}}
-				</span>
-
-				{{$receipt_details->invoice_date}}
-			</p>
-		@endif
-
-		
-	</div>
-	<div class="col-md-6 invoice-col width-50 word-wrap">
+	<div class="col-md-7 invoice-col width-50">
 		@if(!empty($receipt_details->customer_label))
-			<b>{{ $receipt_details->customer_label }}</b><br/>
+			<p style="margin:0 0 4px 0;"><strong>{{ $receipt_details->customer_label }}</strong></p>
 		@endif
-
 		@if(!empty($receipt_details->customer_info))
-			{!! $receipt_details->customer_info !!}
+			<p style="margin:0 0 4px 0;">{!! $receipt_details->customer_info !!}</p>
 		@endif
-		@if(!empty($receipt_details->client_id_label))
-			<br/>
-			<strong>{{ $receipt_details->client_id_label }}</strong> {{ $receipt_details->client_id }}
+		@if(!empty($receipt_details->client_id_label) && !empty($receipt_details->client_id))
+			<p style="margin:0 0 4px 0;"><strong>{{ $receipt_details->client_id_label }}</strong> {{ $receipt_details->client_id }}</p>
 		@endif
-		@if(!empty($receipt_details->customer_tax_number))
-			<br/>
-			<strong>{{ $receipt_details->customer_tax_label }}</strong> {{ $receipt_details->customer_tax_number }}
+		@if(!empty($receipt_details->shipping_address))
+			<p style="margin:0 0 4px 0;"><strong>@lang('lang_v1.shipping_address'):</strong> {!! $receipt_details->shipping_address !!}</p>
 		@endif
-		@if(!empty($receipt_details->customer_custom_fields))
-			<br/>{!! $receipt_details->customer_custom_fields !!}
-		@endif
-		@if(!empty($receipt_details->sales_person_label))
-			<br/>
-			<strong>{{ $receipt_details->sales_person_label }}</strong> {{ $receipt_details->sales_person }}
+		@if(!empty($receipt_details->sales_person_label) && !empty($receipt_details->sales_person))
+			<p style="margin:0;"><strong>{{ $receipt_details->sales_person_label }}</strong> {{ $receipt_details->sales_person }}</p>
 		@endif
 	</div>
 </div>
-<!-- 
-<div class="row invoice-info color-555">
-	<br/>
-	<div class="col-md-6 invoice-col width-50 word-wrap">
-		@if(!empty($receipt_details->customer_label))
-			<b>{{ $receipt_details->customer_label }}</b><br/>
-		@endif
 
-		
-		@if(!empty($receipt_details->customer_name))
-			{{ $receipt_details->customer_name }}<br>
-		@endif
-		@if(!empty($receipt_details->customer_info))
-			{!! $receipt_details->customer_info !!}
-		@endif
-		@if(!empty($receipt_details->client_id_label))
-			<br/>
-			<strong>{{ $receipt_details->client_id_label }}</strong> {{ $receipt_details->client_id }}
-		@endif
-		@if(!empty($receipt_details->customer_tax_label))
-			<br/>
-			<strong>{{ $receipt_details->customer_tax_label }}</strong> {{ $receipt_details->customer_tax_number }}
-		@endif
-		@if(!empty($receipt_details->customer_custom_fields))
-			<br/>{!! $receipt_details->customer_custom_fields !!}
-		@endif
-		@if(!empty($receipt_details->sales_person_label))
-			<br/>
-			<strong>{{ $receipt_details->sales_person_label }}</strong> {{ $receipt_details->sales_person }}
-		@endif
-	</div>
-	<div class="col-md-6 invoice-col width-50 word-wrap">
-		<strong>@lang('lang_v1.shipping_address'):</strong><br>
-		{!! $receipt_details->shipping_address !!}
-		@if(!empty($receipt_details->shipping_custom_field_1_label))
-			<br><strong>{!!$receipt_details->shipping_custom_field_1_label!!} :</strong> {!!$receipt_details->shipping_custom_field_1_value ?? ''!!}
-		@endif
-
-		@if(!empty($receipt_details->shipping_custom_field_2_label))
-			<br><strong>{!!$receipt_details->shipping_custom_field_2_label!!}:</strong> {!!$receipt_details->shipping_custom_field_2_value ?? ''!!}
-		@endif
-
-		@if(!empty($receipt_details->shipping_custom_field_3_label))
-			<br><strong>{!!$receipt_details->shipping_custom_field_3_label!!}:</strong> {!!$receipt_details->shipping_custom_field_3_value ?? ''!!}
-		@endif
-
-		@if(!empty($receipt_details->shipping_custom_field_4_label))
-			<br><strong>{!!$receipt_details->shipping_custom_field_4_label!!}:</strong> {!!$receipt_details->shipping_custom_field_4_value ?? ''!!}
-		@endif
-
-		@if(!empty($receipt_details->shipping_custom_field_5_label))
-			<br><strong>{!!$receipt_details->shipping_custom_field_2_label!!}:</strong> {!!$receipt_details->shipping_custom_field_5_value ?? ''!!}
-		@endif
-	</div>
-</div>
- -->
-
-<div class="row color-555">
+<div class="row invoice-info" style="margin-bottom:16px;">
 	<div class="col-xs-12">
-		<br/>
-		<table class="table table-bordered table-no-top-cell-border">
+		<table style="width:100%; border-collapse:collapse; font-size:14px;">
+			<tr>
+				@if(!empty($receipt_details->invoice_date))
+					<td style="padding:4px 8px 4px 0; width:33%;">
+						<strong>@lang('lang_v1.date'):</strong> {{ $receipt_details->invoice_date }}
+					</td>
+				@endif
+				@if(!empty($receipt_details->invoice_no))
+					<td style="padding:4px 8px; width:33%;">
+						<strong>@lang('lang_v1.waybill_delivery_no'):</strong> {{ $receipt_details->invoice_no }}
+					</td>
+				@endif
+				@if(!empty($receipt_details->sale_orders_invoice_no))
+					<td style="padding:4px 0 4px 8px; width:34%;">
+						<strong>@lang('lang_v1.waybill_sales_order_no'):</strong> {{ $receipt_details->sale_orders_invoice_no }}
+					</td>
+				@endif
+			</tr>
+		</table>
+	</div>
+</div>
+
+<div class="row">
+	<div class="col-xs-12">
+		<table class="table table-bordered" style="width:100%; border-collapse:collapse; font-size:13px;">
 			<thead>
-				<tr style="background-color: #357ca5 !important; color: white !important; font-size: 20px !important" class="table-no-side-cell-border table-no-top-cell-border text-center">
-					<td style="background-color: #357ca5 !important; color: white !important; width: 5% !important">#</td>
-					
-					<td style="background-color: #357ca5 !important; color: white !important; width: 65% !important">
-						{{$receipt_details->table_product_label}}
-					</td>
-					
-					<td style="background-color: #357ca5 !important; color: white !important; width: 30% !important;">
-						{{$receipt_details->table_qty_label}}
-					</td>
+				<tr style="background-color:#d9d9d9 !important; color:#000 !important;">
+					<th style="background-color:#d9d9d9 !important; padding:8px 6px; text-align:left; width:12%;">@lang('lang_v1.waybill_product_id')</th>
+					<th style="background-color:#d9d9d9 !important; padding:8px 6px; text-align:left; width:34%;">@lang('lang_v1.waybill_product_name')</th>
+					<th style="background-color:#d9d9d9 !important; padding:8px 6px; text-align:left; width:14%;">@lang('lang_v1.waybill_lot_no')</th>
+					<th style="background-color:#d9d9d9 !important; padding:8px 6px; text-align:left; width:14%;">@lang('lang_v1.waybill_expiry')</th>
+					<th style="background-color:#d9d9d9 !important; padding:8px 6px; text-align:right; width:12%;">@lang('lang_v1.waybill_quantity')</th>
+					<th style="background-color:#d9d9d9 !important; padding:8px 6px; text-align:left; width:14%;">@lang('lang_v1.waybill_unit_of_measure')</th>
 				</tr>
 			</thead>
 			<tbody>
 				@foreach($receipt_details->lines as $line)
+					@php
+						$product_name = trim(implode(' ', array_filter([
+							$line['name'] ?? '',
+							$line['product_variation'] ?? '',
+							($line['variation'] ?? '') !== 'DUMMY' ? ($line['variation'] ?? '') : '',
+						])));
+					@endphp
 					<tr>
-						<td class="text-center">
-							{{$loop->iteration}}
+						<td style="padding:8px 6px; vertical-align:top;">{{ $line['sub_sku'] ?? '' }}</td>
+						<td style="padding:8px 6px; vertical-align:top; word-break:break-word;">
+							{{ $product_name }}
+							@if(!empty($line['sell_line_note']))
+								<br><small>({!! $line['sell_line_note'] !!})</small>
+							@endif
 						</td>
-						<td style="word-break: break-all;">
-                            {{$line['name']}} {{$line['product_variation']}} {{$line['variation']}} 
-                            @if(!empty($line['sub_sku'])), {{$line['sub_sku']}} @endif @if(!empty($line['brand'])), {{$line['brand']}} @endif
-                            @if(!empty($line['product_custom_fields'])), {{$line['product_custom_fields']}} @endif
-                            @if(!empty($line['sell_line_note']))({!!$line['sell_line_note']!!}) @endif
-                            @if(!empty($line['lot_number']))<br> {{$line['lot_number_label']}}:  {{$line['lot_number']}} @endif 
-                            @if(!empty($line['product_expiry'])), {{$line['product_expiry_label']}}:  {{$line['product_expiry']}} @endif 
-                        </td>
-						<td class="text-right">
-							{{$line['quantity']}} {{$line['units']}}
-						</td>
+						<td style="padding:8px 6px; vertical-align:top;">{{ $line['lot_number'] ?? '' }}</td>
+						<td style="padding:8px 6px; vertical-align:top;">{{ $line['product_expiry'] ?? '' }}</td>
+						<td style="padding:8px 6px; vertical-align:top; text-align:right;">{{ $line['quantity'] ?? '' }}</td>
+						<td style="padding:8px 6px; vertical-align:top;">{{ $line['units'] ?? '' }}</td>
 					</tr>
 					@if(!empty($line['modifiers']))
 						@foreach($line['modifiers'] as $modifier)
+							@php
+								$modifier_name = trim(implode(' ', array_filter([
+									$modifier['name'] ?? '',
+									($modifier['variation'] ?? '') !== 'DUMMY' ? ($modifier['variation'] ?? '') : '',
+								])));
+							@endphp
 							<tr>
-								<td class="text-center">
-									&nbsp;
+								<td style="padding:8px 6px; vertical-align:top;">{{ $modifier['sub_sku'] ?? '' }}</td>
+								<td style="padding:8px 6px; vertical-align:top; word-break:break-word;">
+									{{ $modifier_name }}
+									@if(!empty($modifier['sell_line_note']))
+										<br><small>({!! $modifier['sell_line_note'] !!})</small>
+									@endif
 								</td>
-								<td>
-		                            {{$modifier['name']}} {{$modifier['variation']}} 
-		                            @if(!empty($modifier['sub_sku'])), {{$modifier['sub_sku']}} @endif 
-		                            @if(!empty($modifier['sell_line_note']))({!!$modifier['sell_line_note']!!}) @endif 
-		                        </td>
-								<td class="text-right">
-									{{$modifier['quantity']}} {{$modifier['units']}}
-								</td>
+								<td style="padding:8px 6px; vertical-align:top;"></td>
+								<td style="padding:8px 6px; vertical-align:top;"></td>
+								<td style="padding:8px 6px; vertical-align:top; text-align:right;">{{ $modifier['quantity'] ?? '' }}</td>
+								<td style="padding:8px 6px; vertical-align:top;">{{ $modifier['units'] ?? '' }}</td>
 							</tr>
 						@endforeach
 					@endif
 				@endforeach
-
-				@php
-					$lines = count($receipt_details->lines);
-				@endphp
-
-				@for ($i = $lines; $i < 1; $i++)
-    				<tr>
-    					<td>&nbsp;</td>
-    					<td>&nbsp;</td>
-    					<td>&nbsp;</td>
-    				</tr>
-				@endfor
-
 			</tbody>
 		</table>
 	</div>
 </div>
 
-<div class="row invoice-info color-555" style="page-break-inside: avoid !important">
-	<div class="col-md-6 invoice-col width-50">
-		<b class="pull-left">@lang('lang_v1.above_mentioned_items_received_in_good_condition')</b>
+<div class="row invoice-info" style="page-break-inside:avoid !important; margin-top:24px;">
+	<div class="col-md-12">
+		<b>@lang('lang_v1.above_mentioned_items_received_in_good_condition')</b>
 	</div>
 </div>
-</br>
-<div class="row invoice-info color-555" style="page-break-inside: avoid !important">
-	<div class="col-md-6 invoice-col width-80">
-		<b class="pull-left">@lang('lang_v1.received_by') : </b>
+<br>
+<div class="row invoice-info" style="page-break-inside:avoid !important;">
+	<div class="col-md-6 invoice-col width-50">
+		<b>@lang('lang_v1.received_by'):</b>
+		<span style="display:inline-block; min-width:240px; border-bottom:1px solid #000;">&nbsp;</span>
 	</div>
 </div>
-</br>
-<div class="row invoice-info color-555" style="page-break-inside: avoid !important">
+<br>
+<div class="row invoice-info" style="page-break-inside:avoid !important;">
 	<div class="col-md-6 invoice-col width-50">
-		<b class="pull-left">@lang('lang_v1.date'):</b>
+		<b>@lang('lang_v1.date'):</b>
+		<span style="display:inline-block; min-width:180px; border-bottom:1px solid #000;">&nbsp;</span>
 	</div>
 </div>
-</br>
-<div class="row invoice-info color-555" style="page-break-inside: avoid !important">
+<br>
+<div class="row invoice-info" style="page-break-inside:avoid !important;">
 	<div class="col-md-6 invoice-col width-50">
-		<b class="pull-left">@lang('lang_v1.authorized_signatory')</b>
+		<b>@lang('lang_v1.authorized_signatory')</b>
+		<span style="display:inline-block; min-width:200px; border-bottom:1px solid #000;">&nbsp;</span>
 	</div>
 </div>
 
-{{-- Barcode --}}
 @if($receipt_details->show_barcode)
 <br>
 <div class="row">
-		<div class="col-xs-12">
-			<img class="center-block" src="data:image/png;base64,{{DNS1D::getBarcodePNG($receipt_details->invoice_no, 'C128', 2,30,array(39, 48, 54), true)}}">
-		</div>
-</div>
-@endif
-
-@if(!empty($receipt_details->footer_text))
-	<div class="row color-555">
-		<div class="col-xs-12">
-			{!! $receipt_details->footer_text !!}
-		</div>
+	<div class="col-xs-12">
+		<img class="center-block" src="data:image/png;base64,{{ DNS1D::getBarcodePNG($receipt_details->invoice_no, 'C128', 2, 30, [39, 48, 54], true) }}" alt="">
 	</div>
+</div>
 @endif
 
 			</td>

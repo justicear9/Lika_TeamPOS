@@ -762,7 +762,15 @@ class SellPosController extends Controller
         //Check if printer setting is provided.
         $receipt_printer_type = is_null($printer_type) ? $location_details->receipt_printer_type : $printer_type;
 
-        $receipt_details = $this->transactionUtil->getReceiptDetails($transaction_id, $location_id, $invoice_layout, $business_details, $location_details, $receipt_printer_type);
+        $invoice_layout_for_receipt = $invoice_layout;
+        if ($is_delivery_note && ! empty($invoice_layout)) {
+            $invoice_layout_for_receipt = clone $invoice_layout;
+            $invoice_layout_for_receipt->show_sku = 1;
+            $invoice_layout_for_receipt->show_lot = 1;
+            $invoice_layout_for_receipt->show_expiry = 1;
+        }
+
+        $receipt_details = $this->transactionUtil->getReceiptDetails($transaction_id, $location_id, $invoice_layout_for_receipt, $business_details, $location_details, $receipt_printer_type);
 
         $currency_details = [
             'symbol' => $business_details->currency_symbol,
