@@ -137,30 +137,23 @@
 	</div>
 </div>
 
-<div class="row invoice-info" style="page-break-inside:avoid !important; margin-top:24px;">
-	<div class="col-md-12">
-		<b>@lang('lang_v1.above_mentioned_items_received_in_good_condition')</b>
-	</div>
-</div>
-<br>
-<div class="row invoice-info" style="page-break-inside:avoid !important;">
-	<div class="col-md-6 invoice-col width-50">
-		<b>@lang('lang_v1.received_by'):</b>
-		<span style="display:inline-block; min-width:240px; border-bottom:1px solid #000;">&nbsp;</span>
-	</div>
-</div>
-<br>
-<div class="row invoice-info" style="page-break-inside:avoid !important;">
-	<div class="col-md-6 invoice-col width-50">
-		<b>@lang('lang_v1.date'):</b>
-		<span style="display:inline-block; min-width:180px; border-bottom:1px solid #000;">&nbsp;</span>
-	</div>
-</div>
-<br>
-<div class="row invoice-info" style="page-break-inside:avoid !important;">
-	<div class="col-md-6 invoice-col width-50">
-		<b>@lang('lang_v1.authorized_signatory')</b>
-		<span style="display:inline-block; min-width:200px; border-bottom:1px solid #000;">&nbsp;</span>
+<div class="row" style="page-break-inside:avoid !important; margin-top:28px;">
+	<div class="col-xs-12">
+		<table style="width:100%; border-collapse:collapse;">
+			<tr>
+				<td style="width:47%; vertical-align:top;">
+					@include('sale_pos.receipts.partials.waybill_acknowledgement_box')
+				</td>
+				<td style="width:6%; text-align:center; vertical-align:middle;">
+					<span style="display:inline-block; writing-mode:vertical-rl; text-orientation:mixed; transform:rotate(180deg); font-size:11px; font-weight:600; color:#9e9e9e; letter-spacing:3px;">
+						@lang('lang_v1.waybill_stamp')
+					</span>
+				</td>
+				<td style="width:47%; vertical-align:top;">
+					@include('sale_pos.receipts.partials.waybill_acknowledgement_box')
+				</td>
+			</tr>
+		</table>
 	</div>
 </div>
 

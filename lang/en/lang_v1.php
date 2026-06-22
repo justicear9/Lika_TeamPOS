@@ -1505,6 +1505,7 @@ return [
     'waybill_expiry' => 'Expiry',
     'waybill_quantity' => 'Quantity',
     'waybill_unit_of_measure' => 'Unit of Measure',
+    'waybill_stamp' => 'STAMP',
     'add_edit_payment' => 'Add/Edit Payment',
     'select_variation_values' => 'Select variation values',
     'show_letter_head' => 'Show letter head',
