@@ -150,7 +150,15 @@
                                 </thead>
                                 <tfoot>
                                     <tr class="bg-gray font-17 footer-total text-center">
-                                        <td colspan="9"><strong>@lang('sale.total'):</strong></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td><strong>@lang('sale.total'):</strong></td>
                                         <td></td>
                                         <td id="footer_total_sold"></td>
                                         <td id="footer_total_returned"></td>
