@@ -69,7 +69,7 @@
                 <div class="col-md-3">
                     <div class="form-group">
                         {!! Form::label('psr_commission_agent', __('lang_v1.sales_commission_agent') . ':') !!}
-                        {!! Form::select('commission_agent', $commission_agents, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'psr_commission_agent']); !!}
+                        {!! Form::select('psr_commission_agent', $commission_agents, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'psr_commission_agent', 'placeholder' => __('lang_v1.all')]); !!}
                     </div>
                 </div>
                 <div class="col-md-3">
@@ -284,6 +284,7 @@
                                         d.location_id = $('select#location_id').val();
                                         d.customer_group_id = $('#psr_customer_group_id').val();
                                         d.commission_agent = $('#psr_commission_agent').val();
+                                        d.sales_cmsn_agnt = $('select#psr_commission_agent').val();
                                         d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
                                     },
                                 },
@@ -347,6 +348,7 @@
                                         d.location_id = $('select#location_id').val();
                                         d.customer_group_id = $('#psr_customer_group_id').val();
                                         d.commission_agent = $('#psr_commission_agent').val();
+                                        d.sales_cmsn_agnt = $('select#psr_commission_agent').val();
                                         d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
                                     },
                                 },

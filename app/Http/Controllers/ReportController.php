@@ -1938,7 +1938,7 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
-            $commission_agent = $request->get('commission_agent', null);
+            $commission_agent = $request->input('sales_cmsn_agnt', $request->input('commission_agent'));
             if (! empty($commission_agent)) {
                 $query->where('t.commission_agent', $commission_agent);
             }
@@ -2031,7 +2031,14 @@ class ReportController extends Controller
         $categories = Category::forDropdown($business_id, 'product');
         $brands = Brands::forDropdown($business_id);
         $customer_group = CustomerGroup::forDropdown($business_id, false, true);
-        $commission_agents = User::forDropdown($business_id, false, true, true);
+
+        // Match how sales forms assign commission agents (users list vs commission-agent list).
+        $commsn_agnt_setting = session('business.sales_cmsn_agnt');
+        if ($commsn_agnt_setting == 'cmsn_agnt') {
+            $commission_agents = User::saleCommissionAgentsDropdown($business_id, false);
+        } else {
+            $commission_agents = User::forDropdown($business_id, false, true, false);
+        }
 
         return view('report.product_sell_report')
             ->with(compact('business_locations', 'customers', 'categories', 'brands',
@@ -2152,7 +2159,7 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
-            $commission_agent = $request->get('commission_agent', null);
+            $commission_agent = $request->input('sales_cmsn_agnt', $request->input('commission_agent'));
             if (! empty($commission_agent)) {
                 $query->where('t.commission_agent', $commission_agent);
             }
@@ -2804,7 +2811,7 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
-            $commission_agent = $request->get('commission_agent', null);
+            $commission_agent = $request->input('sales_cmsn_agnt', $request->input('commission_agent'));
             if (! empty($commission_agent)) {
                 $query->where('t.commission_agent', $commission_agent);
             }
@@ -2941,7 +2948,7 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
-            $commission_agent = $request->get('commission_agent', null);
+            $commission_agent = $request->input('sales_cmsn_agnt', $request->input('commission_agent'));
             if (! empty($commission_agent)) {
                 $query->where('t.commission_agent', $commission_agent);
             }
