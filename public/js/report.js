@@ -892,7 +892,7 @@ $(document).ready(function() {
             processing: true,
             serverSide: true,
             fixedHeader:false,
-            aaSorting: [[6, 'desc']],
+            aaSorting: [[8, 'desc']],
             ajax: {
                 url: '/reports/product-sell-report',
                 data: function(d) {
