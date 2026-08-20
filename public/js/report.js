@@ -921,6 +921,7 @@ $(document).ready(function() {
                     d.category_id = $('select#psr_filter_category_id').val();
                     d.brand_id = $('select#psr_filter_brand_id').val();
                     d.customer_group_id = $('#psr_customer_group_id').val();
+                    d.commission_agent = $('#psr_commission_agent').val();
                     d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
                 },
             },
@@ -934,6 +935,7 @@ $(document).ready(function() {
                 { data: 'contact_no', name: 'c.mobile' },
                 { data: 'invoice_no', name: 't.invoice_no' },
                 { data: 'transaction_date', name: 't.transaction_date' },
+                { data: 'commission_agent_name', name: 'ca.first_name' },
                 { data: 'sell_qty', name: 'transaction_sell_lines.quantity' },
                 { data: 'returned_qty', name: 'transaction_sell_lines.quantity_returned' },
                 { data: 'unit_price', name: 'transaction_sell_lines.unit_price_before_discount' },
@@ -988,6 +990,7 @@ $(document).ready(function() {
                 d.category_id = $('select#psr_filter_category_id').val();
                 d.brand_id = $('select#psr_filter_brand_id').val();
                 d.customer_group_id = $('#psr_customer_group_id').val();
+                d.commission_agent = $('#psr_commission_agent').val();
                 d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
             },
         },
@@ -1041,6 +1044,7 @@ $(document).ready(function() {
                 d.category_id = $('select#psr_filter_category_id').val();
                 d.brand_id = $('select#psr_filter_brand_id').val();
                 d.customer_group_id = $('#psr_customer_group_id').val();
+                d.commission_agent = $('#psr_commission_agent').val();
                 d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
             },
         },
@@ -1068,7 +1072,7 @@ $(document).ready(function() {
     });
 
     $(
-        '#psr_customer_group_id, #psr_filter_category_id, #psr_filter_brand_id, #product_sell_report_form #variation_id, #product_sell_report_form #location_id, #product_sell_report_form #customer_id, #psr_include_returns'
+        '#psr_customer_group_id, #psr_filter_category_id, #psr_filter_brand_id, #psr_commission_agent, #product_sell_report_form #variation_id, #product_sell_report_form #location_id, #product_sell_report_form #customer_id, #psr_include_returns'
     ).change(function() {
         product_sell_report.ajax.reload();
         product_sell_grouped_report.ajax.reload();

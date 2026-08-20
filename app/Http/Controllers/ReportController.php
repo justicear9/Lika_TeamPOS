@@ -1861,6 +1861,7 @@ class ReportController extends Controller
                 ->join('products as p', 'pv.product_id', '=', 'p.id')
                 ->leftjoin('tax_rates', 'transaction_sell_lines.tax_id', '=', 'tax_rates.id')
                 ->leftjoin('units as u', 'p.unit_id', '=', 'u.id')
+                ->leftjoin('users as ca', 't.commission_agent', '=', 'ca.id')
                 ->where('t.business_id', $business_id)
                 ->where('t.type', 'sell')
                 ->where('t.status', 'final')
@@ -1881,6 +1882,7 @@ class ReportController extends Controller
                     't.id as transaction_id',
                     't.invoice_no',
                     't.transaction_date as transaction_date',
+                    DB::raw("TRIM(CONCAT(COALESCE(ca.surname, ''),' ',COALESCE(ca.first_name, ''),' ',COALESCE(ca.last_name,''))) as commission_agent_name"),
                     'transaction_sell_lines.unit_price_before_discount as unit_price',
                     'transaction_sell_lines.unit_price_inc_tax as unit_sale_price',
                     DB::raw('(transaction_sell_lines.quantity - transaction_sell_lines.quantity_returned) as sell_qty'),
@@ -1936,6 +1938,11 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
+            $commission_agent = $request->get('commission_agent', null);
+            if (! empty($commission_agent)) {
+                $query->where('t.commission_agent', $commission_agent);
+            }
+
             if (! $include_returns) {
                 $query->where('transaction_sell_lines.quantity_returned', 0);
             }
@@ -1948,6 +1955,13 @@ class ReportController extends Controller
                     }
 
                     return $product_name;
+                })
+                ->filterColumn('commission_agent_name', function ($query, $keyword) {
+                    $query->where(function ($q) use ($keyword) {
+                        $q->where('ca.first_name', 'like', "%{$keyword}%")
+                            ->orWhere('ca.last_name', 'like', "%{$keyword}%")
+                            ->orWhere('ca.surname', 'like', "%{$keyword}%");
+                    });
                 })
                  ->editColumn('invoice_no', function ($row) {
                      return '<a data-href="'.action([\App\Http\Controllers\SellController::class, 'show'], [$row->transaction_id])
@@ -2017,10 +2031,11 @@ class ReportController extends Controller
         $categories = Category::forDropdown($business_id, 'product');
         $brands = Brands::forDropdown($business_id);
         $customer_group = CustomerGroup::forDropdown($business_id, false, true);
+        $commission_agents = User::forDropdown($business_id, false, true, true);
 
         return view('report.product_sell_report')
             ->with(compact('business_locations', 'customers', 'categories', 'brands',
-                'customer_group', 'product_custom_field1', 'product_custom_field2'));
+                'customer_group', 'commission_agents', 'product_custom_field1', 'product_custom_field2'));
     }
 
     /**
@@ -2135,6 +2150,11 @@ class ReportController extends Controller
             $brand_id = $request->get('brand_id', null);
             if (! empty($brand_id)) {
                 $query->where('p.brand_id', $brand_id);
+            }
+
+            $commission_agent = $request->get('commission_agent', null);
+            if (! empty($commission_agent)) {
+                $query->where('t.commission_agent', $commission_agent);
             }
 
             if (! $include_returns) {
@@ -2784,6 +2804,11 @@ class ReportController extends Controller
                 $query->where('p.brand_id', $brand_id);
             }
 
+            $commission_agent = $request->get('commission_agent', null);
+            if (! empty($commission_agent)) {
+                $query->where('t.commission_agent', $commission_agent);
+            }
+
             if (! $include_returns) {
                 $query->where('transaction_sell_lines.quantity_returned', 0);
             }
@@ -2914,6 +2939,11 @@ class ReportController extends Controller
             $brand_id = $request->get('brand_id', null);
             if (! empty($brand_id)) {
                 $query->where('p.brand_id', $brand_id);
+            }
+
+            $commission_agent = $request->get('commission_agent', null);
+            if (! empty($commission_agent)) {
+                $query->where('t.commission_agent', $commission_agent);
             }
 
             if (! $include_returns) {

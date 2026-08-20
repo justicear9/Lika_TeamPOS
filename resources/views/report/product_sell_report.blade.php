@@ -68,6 +68,12 @@
                 </div>
                 <div class="col-md-3">
                     <div class="form-group">
+                        {!! Form::label('psr_commission_agent', __('lang_v1.sales_commission_agent') . ':') !!}
+                        {!! Form::select('commission_agent', $commission_agents, null, ['class' => 'form-control select2', 'style' => 'width:100%', 'id' => 'psr_commission_agent']); !!}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
                         {!! Form::label('product_sr_date_filter', __('report.date_range') . ':') !!}
                         {!! Form::text('date_range', null, ['placeholder' => __('lang_v1.select_a_date_range'), 'class' => 'form-control', 'id' => 'product_sr_date_filter', 'readonly']); !!}
                     </div>
@@ -131,6 +137,7 @@
                                         <th>@lang('lang_v1.contact_no')</th>
                                         <th>@lang('sale.invoice_no')</th>
                                         <th>@lang('messages.date')</th>
+                                        <th>@lang('lang_v1.sales_commission_agent')</th>
                                         <th>@lang('sale.qty')</th>
                                         <th>@lang('lang_v1.total_returned')</th>
                                         <th>@lang('sale.unit_price')</th>
@@ -143,7 +150,7 @@
                                 </thead>
                                 <tfoot>
                                     <tr class="bg-gray font-17 footer-total text-center">
-                                        <td colspan="9"><strong>@lang('sale.total'):</strong></td>
+                                        <td colspan="10"><strong>@lang('sale.total'):</strong></td>
                                         <td id="footer_total_sold"></td>
                                         <td id="footer_total_returned"></td>
                                         <td></td>
@@ -228,7 +235,7 @@
     <script src="{{ asset('js/report.js?v=' . $asset_v) }}"></script>
     <script type="text/javascript">
         $(
-        '#product_sell_report_form #location_id, #product_sell_report_form #customer_id, #psr_filter_brand_id, #psr_filter_category_id, #psr_customer_group_id, #psr_include_returns'
+        '#product_sell_report_form #location_id, #product_sell_report_form #customer_id, #psr_filter_brand_id, #psr_filter_category_id, #psr_customer_group_id, #psr_commission_agent, #psr_include_returns'
     ).change(function() {
         $('.nav-tabs li.active').find('a[data-toggle="tab"]').trigger('shown.bs.tab');
     });
@@ -267,6 +274,7 @@
                                         d.customer_id = $('select#customer_id').val();
                                         d.location_id = $('select#location_id').val();
                                         d.customer_group_id = $('#psr_customer_group_id').val();
+                                        d.commission_agent = $('#psr_commission_agent').val();
                                         d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
                                     },
                                 },
@@ -329,6 +337,7 @@
                                         d.customer_id = $('select#customer_id').val();
                                         d.location_id = $('select#location_id').val();
                                         d.customer_group_id = $('#psr_customer_group_id').val();
+                                        d.commission_agent = $('#psr_commission_agent').val();
                                         d.include_returns = $('#psr_include_returns').is(':checked') ? 1 : 0;
                                     },
                                 },
