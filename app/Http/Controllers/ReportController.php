@@ -1990,9 +1990,10 @@ class ReportController extends Controller
                  ->editColumn('subtotal', function ($row) {
                      //ignore child sell line of combo product
                      $class = is_null($row->parent_sell_line_id) ? 'row_subtotal' : '';
+                     $subtotal = (float) $row->subtotal - $this->productSellLineInvoiceDiscountShare($row);
 
-                     return '<span class="'.$class.'"  data-orig-value="'.$row->subtotal.'">'.
-                    $this->transactionUtil->num_f($row->subtotal, true).'</span>';
+                     return '<span class="'.$class.'"  data-orig-value="'.$subtotal.'">'.
+                    $this->transactionUtil->num_f($subtotal, true).'</span>';
                  })
                 ->editColumn('unit_price', function ($row) {
                     return '<span class="unit_price" data-orig-value="'.$row->unit_price.'">'.
@@ -2017,10 +2018,8 @@ class ReportController extends Controller
                         if ($row->invoice_discount_type == 'percentage') {
                             $parts[] = $this->transactionUtil->num_f($invoice_discount).' %';
                         } else {
-                            $total_before_tax = (float) ($row->total_before_tax ?? 0);
-                            $line_subtotal = (float) ($row->subtotal ?? 0);
-                            if ($total_before_tax > 0 && $line_subtotal > 0) {
-                                $share = ($line_subtotal / $total_before_tax) * $invoice_discount;
+                            $share = $this->productSellLineInvoiceDiscountShare($row);
+                            if ($share > 0) {
                                 $parts[] = $this->transactionUtil->num_f($share);
                             }
                         }
@@ -4206,5 +4205,32 @@ class ReportController extends Controller
         $suppliers = Contact::suppliersDropdown($business_id);
 
         return view('report.gst_purchase_report')->with(compact('suppliers', 'taxes'));
+    }
+
+    /**
+     * Allocate this sell line's share of an invoice-level discount.
+     */
+    private function productSellLineInvoiceDiscountShare($row): float
+    {
+        $invoice_discount = (float) ($row->invoice_discount_amount ?? 0);
+        if ($invoice_discount <= 0 || empty($row->invoice_discount_type)) {
+            return 0;
+        }
+
+        $line_subtotal = (float) ($row->subtotal ?? 0);
+        if ($line_subtotal <= 0) {
+            return 0;
+        }
+
+        if ($row->invoice_discount_type == 'percentage') {
+            return ($invoice_discount / 100) * $line_subtotal;
+        }
+
+        $total_before_tax = (float) ($row->total_before_tax ?? 0);
+        if ($total_before_tax <= 0) {
+            return 0;
+        }
+
+        return ($line_subtotal / $total_before_tax) * $invoice_discount;
     }
 }
