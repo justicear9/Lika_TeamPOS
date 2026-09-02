@@ -1889,6 +1889,9 @@ class ReportController extends Controller
                     'transaction_sell_lines.quantity_returned as returned_qty',
                     'transaction_sell_lines.line_discount_type as discount_type',
                     'transaction_sell_lines.line_discount_amount as discount_amount',
+                    't.discount_type as invoice_discount_type',
+                    't.discount_amount as invoice_discount_amount',
+                    't.total_before_tax',
                     'transaction_sell_lines.item_tax',
                     'tax_rates.name as tax',
                     'u.short_name as unit',
@@ -1995,13 +1998,36 @@ class ReportController extends Controller
                     return '<span class="unit_price" data-orig-value="'.$row->unit_price.'">'.
                     $this->transactionUtil->num_f($row->unit_price, true).'</span>';
                 })
-                ->editColumn('discount_amount', '
-                    @if($discount_type == "percentage")
-                        {{@num_format($discount_amount)}} %
-                    @elseif($discount_type == "fixed")
-                        {{@num_format($discount_amount)}}
-                    @endif
-                    ')
+                ->editColumn('discount_amount', function ($row) {
+                    $parts = [];
+
+                    $line_discount = (float) ($row->discount_amount ?? 0);
+                    if (! empty($line_discount) && ! empty($row->discount_type)) {
+                        if ($row->discount_type == 'percentage') {
+                            $parts[] = $this->transactionUtil->num_f($line_discount).' %';
+                        } else {
+                            $parts[] = $this->transactionUtil->num_f($line_discount);
+                        }
+                    }
+
+                    // Invoice discount applies to the whole sale; percentage is equivalent to a
+                    // matching line discount, fixed is allocated by line share of invoice total.
+                    $invoice_discount = (float) ($row->invoice_discount_amount ?? 0);
+                    if (! empty($invoice_discount) && ! empty($row->invoice_discount_type)) {
+                        if ($row->invoice_discount_type == 'percentage') {
+                            $parts[] = $this->transactionUtil->num_f($invoice_discount).' %';
+                        } else {
+                            $total_before_tax = (float) ($row->total_before_tax ?? 0);
+                            $line_subtotal = (float) ($row->subtotal ?? 0);
+                            if ($total_before_tax > 0 && $line_subtotal > 0) {
+                                $share = ($line_subtotal / $total_before_tax) * $invoice_discount;
+                                $parts[] = $this->transactionUtil->num_f($share);
+                            }
+                        }
+                    }
+
+                    return ! empty($parts) ? implode(' + ', array_unique($parts)) : '';
+                })
                 ->editColumn('tax', function ($row) {
                     return $this->transactionUtil->num_f($row->item_tax, true)
                      .'<br>'.'<span data-orig-value="'.$row->item_tax.'" 
@@ -2033,11 +2059,24 @@ class ReportController extends Controller
         $customer_group = CustomerGroup::forDropdown($business_id, false, true);
 
         // Match how sales forms assign commission agents (users list vs commission-agent list).
+        // Include both lists so historical sales still filter correctly if the setting changed.
         $commsn_agnt_setting = session('business.sales_cmsn_agnt');
         if ($commsn_agnt_setting == 'cmsn_agnt') {
             $commission_agents = User::saleCommissionAgentsDropdown($business_id, false);
+            $user_agents = User::forDropdown($business_id, false, true, false);
+            foreach ($user_agents as $id => $name) {
+                if (! $commission_agents->has($id)) {
+                    $commission_agents->put($id, $name);
+                }
+            }
         } else {
             $commission_agents = User::forDropdown($business_id, false, true, false);
+            $cmsn_agents = User::saleCommissionAgentsDropdown($business_id, false);
+            foreach ($cmsn_agents as $id => $name) {
+                if (! $commission_agents->has($id)) {
+                    $commission_agents->put($id, $name);
+                }
+            }
         }
 
         return view('report.product_sell_report')
