@@ -216,7 +216,18 @@
               <td class="no-print text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->purchase_price }}</span></td>
               <td class="no-print text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->quantity * $purchase_line->purchase_price }}</span></td>
               <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->item_tax }} </span> <br/><small>@if(!empty($taxes[$purchase_line->tax_id])) ( {{ $taxes[$purchase_line->tax_id]}} ) </small>@endif</td>
-              <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->purchase_price_inc_tax }}</span></td>
+              @php
+                  $show_qty = (float) $purchase_line->quantity;
+                  $show_freight = (float) ($purchase_line->freight_allocation ?? 0);
+                  $show_pp_inc = (float) $purchase_line->purchase_price_inc_tax;
+                  if ($show_qty > 0 && $show_freight > 0) {
+                      $show_pp_inc = $show_pp_inc - ($show_freight / $show_qty);
+                      if ($show_pp_inc < 0) {
+                          $show_pp_inc = (float) $purchase_line->purchase_price_inc_tax;
+                      }
+                  }
+              @endphp
+              <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $show_pp_inc }}</span></td>
               @if($purchase->type != 'purchase_order')
               @if(session('business.enable_lot_number'))
                 <td>{{$purchase_line->lot_number}}</td>
@@ -235,7 +246,7 @@
               </td>
               @endif
               @endif
-              <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->purchase_price_inc_tax * $purchase_line->quantity }}</span></td>
+              <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $show_pp_inc * $show_qty }}</span></td>
             </tr>
             @php 
               $total_before_tax += ($purchase_line->quantity * $purchase_line->purchase_price);

@@ -1207,6 +1207,8 @@ class ProductUtil extends Util
         $updated_purchase_lines = [];
         $updated_purchase_line_ids = [0];
         $exchange_rate = ! empty($transaction->exchange_rate) ? $transaction->exchange_rate : 1;
+        // Form sends vendor costs; freight is re-applied by PurchaseLandedCostService after save.
+        $has_freight_allocation = \Schema::hasColumn('purchase_lines', 'freight_allocation');
 
         foreach ($input_data as $data) {
             $multiplier = 1;
@@ -1247,6 +1249,9 @@ class ProductUtil extends Util
             $purchase_line->purchase_price = ($this->num_uf($data['purchase_price'], $currency_details) * $exchange_rate) / $multiplier;
             $purchase_line->purchase_price_inc_tax = ($this->num_uf($data['purchase_price_inc_tax'], $currency_details) * $exchange_rate) / $multiplier;
             $purchase_line->item_tax = ($this->num_uf($data['item_tax'], $currency_details) * $exchange_rate) / $multiplier;
+            if ($has_freight_allocation) {
+                $purchase_line->freight_allocation = 0;
+            }
             $purchase_line->tax_id = $data['purchase_line_tax_id'];
             $purchase_line->lot_number = ! empty($data['lot_number']) ? $data['lot_number'] : null;
             $purchase_line->mfg_date = ! empty($data['mfg_date']) ? $this->uf_date($data['mfg_date']) : null;

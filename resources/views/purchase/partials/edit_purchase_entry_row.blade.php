@@ -43,6 +43,22 @@
         <tbody>
     <?php $row_count = 0; ?>
     @foreach($purchase->purchase_lines as $purchase_line)
+        @php
+            // purchase_price_inc_tax may include allocated freight (landed cost).
+            // Edit form shows vendor unit cost / line total; shipping stays separate.
+            $line_qty = (float) $purchase_line->quantity;
+            $freight_allocation = (float) ($purchase_line->freight_allocation ?? 0);
+            $pp_inc_tax_without_freight = (float) $purchase_line->purchase_price_inc_tax;
+            if ($line_qty > 0 && $freight_allocation > 0) {
+                $pp_inc_tax_without_freight = $pp_inc_tax_without_freight - ($freight_allocation / $line_qty);
+                if ($pp_inc_tax_without_freight < 0) {
+                    $pp_inc_tax_without_freight = (float) $purchase_line->purchase_price_inc_tax;
+                }
+            }
+            $exchange_rate = !empty($purchase->exchange_rate) ? $purchase->exchange_rate : 1;
+            $pp_inc_tax_display = $pp_inc_tax_without_freight / $exchange_rate;
+            $line_total_display = $pp_inc_tax_display * $line_qty;
+        @endphp
         <tr @if(!empty($purchase_line->purchase_order_line) && !empty($common_settings['enable_purchase_order'])) data-purchase_order_id="{{$purchase_line->purchase_order_line->transaction_id}}" @endif  @if(!empty($purchase_line->purchase_requisition_line) && !empty($common_settings['enable_purchase_requisition'])) data-purchase_requisition_id="{{$purchase_line->purchase_requisition_line->transaction_id}}" @endif>
             <td><span class="sr_number"></span></td>
             <td>
@@ -155,18 +171,18 @@
                 </div>
             </td>
             <td class="{{$hide_tax}}">
-                {!! Form::text('purchases[' . $loop->index . '][purchase_price_inc_tax]', number_format($purchase_line->purchase_price_inc_tax/$purchase->exchange_rate, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost_after_tax input_number', 'required']); !!}
+                {!! Form::text('purchases[' . $loop->index . '][purchase_price_inc_tax]', number_format($pp_inc_tax_display, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator), ['class' => 'form-control input-sm purchase_unit_cost_after_tax input_number', 'required']); !!}
             </td>
             <td>
                 <span class="row_subtotal_after_tax">
-                {{number_format($purchase_line->purchase_price_inc_tax * $purchase_line->quantity/$purchase->exchange_rate, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator)}}
+                {{number_format($line_total_display, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator)}}
                 </span>
-                <input type="hidden" class="row_subtotal_after_tax_hidden" value="{{number_format($purchase_line->purchase_price_inc_tax * $purchase_line->quantity/$purchase->exchange_rate, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator)}}">
+                <input type="hidden" class="row_subtotal_after_tax_hidden" value="{{number_format($line_total_display, $currency_precision, $currency_details->decimal_separator, $currency_details->thousand_separator)}}">
             </td>
 
             <td class="@if(!session('business.enable_editing_product_from_purchase') || !empty($is_purchase_order)) hide @endif">
                 @php
-                    $pp = $purchase_line->purchase_price_inc_tax;
+                    $pp = $pp_inc_tax_without_freight;
                     $sp = $purchase_line->variations->sell_price_inc_tax;
                     if(!empty($purchase_line->sub_unit->base_unit_multiplier)) {
                         $sp = $sp * $purchase_line->sub_unit->base_unit_multiplier;
