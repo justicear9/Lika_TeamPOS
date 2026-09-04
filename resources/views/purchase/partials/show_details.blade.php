@@ -171,9 +171,22 @@
             </tr>
           </thead>
           @php 
-            $total_before_tax = 0.00;
+            // Line totals exclude allocated freight; shipping is shown separately below.
+            $total_line_inc_tax = 0.00;
           @endphp
           @foreach($purchase->purchase_lines as $purchase_line)
+            @php
+                $show_qty = (float) $purchase_line->quantity;
+                $show_freight = (float) ($purchase_line->freight_allocation ?? 0);
+                $show_pp_inc = (float) $purchase_line->purchase_price_inc_tax;
+                if ($show_qty > 0 && $show_freight > 0) {
+                    $show_pp_inc = $show_pp_inc - ($show_freight / $show_qty);
+                    if ($show_pp_inc < 0) {
+                        $show_pp_inc = (float) $purchase_line->purchase_price_inc_tax;
+                    }
+                }
+                $line_subtotal_inc_tax = $show_pp_inc * $show_qty;
+            @endphp
             <tr>
               <td>{{ $loop->iteration }}</td>
               <td>
@@ -216,17 +229,6 @@
               <td class="no-print text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->purchase_price }}</span></td>
               <td class="no-print text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->quantity * $purchase_line->purchase_price }}</span></td>
               <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $purchase_line->item_tax }} </span> <br/><small>@if(!empty($taxes[$purchase_line->tax_id])) ( {{ $taxes[$purchase_line->tax_id]}} ) </small>@endif</td>
-              @php
-                  $show_qty = (float) $purchase_line->quantity;
-                  $show_freight = (float) ($purchase_line->freight_allocation ?? 0);
-                  $show_pp_inc = (float) $purchase_line->purchase_price_inc_tax;
-                  if ($show_qty > 0 && $show_freight > 0) {
-                      $show_pp_inc = $show_pp_inc - ($show_freight / $show_qty);
-                      if ($show_pp_inc < 0) {
-                          $show_pp_inc = (float) $purchase_line->purchase_price_inc_tax;
-                      }
-                  }
-              @endphp
               <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $show_pp_inc }}</span></td>
               @if($purchase->type != 'purchase_order')
               @if(session('business.enable_lot_number'))
@@ -246,10 +248,10 @@
               </td>
               @endif
               @endif
-              <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $show_pp_inc * $show_qty }}</span></td>
+              <td class="text-right"><span class="display_currency" data-currency_symbol="true">{{ $line_subtotal_inc_tax }}</span></td>
             </tr>
             @php 
-              $total_before_tax += ($purchase_line->quantity * $purchase_line->purchase_price);
+              $total_line_inc_tax += $line_subtotal_inc_tax;
             @endphp
           @endforeach
         </table>
@@ -257,6 +259,43 @@
     </div>
   </div>
   <br>
+  @php
+    // Match purchase form: net = line totals (inc tax, excl freight); then discount, tax, shipping.
+    $net_total_amount = $total_line_inc_tax;
+    $discount_amount_display = 0.0;
+    if (!empty($purchase->discount_type) && (float) $purchase->discount_amount != 0) {
+      if ($purchase->discount_type == 'percentage') {
+        $discount_amount_display = $net_total_amount * (float) $purchase->discount_amount / 100;
+      } else {
+        $discount_amount_display = (float) $purchase->discount_amount;
+      }
+    }
+
+    $purchase_tax_total = 0.0;
+    $purchase_taxes_display = [];
+    if (!empty($purchase->tax) && (float) $purchase->tax->amount > 0) {
+      $taxable = max(0, $net_total_amount - $discount_amount_display);
+      $purchase_tax_total = $taxable * ((float) $purchase->tax->amount / 100);
+      if ($purchase->tax->is_tax_group) {
+        $transactionUtil = $transactionUtil ?? app(\App\Utils\TransactionUtil::class);
+        $purchase_taxes_display = $transactionUtil->sumGroupTaxDetails(
+          $transactionUtil->groupTaxDetails($purchase->tax, $purchase_tax_total)
+        );
+      } else {
+        $purchase_taxes_display = [$purchase->tax->name => $purchase_tax_total];
+      }
+    } elseif (!empty($purchase_taxes)) {
+      $purchase_taxes_display = $purchase_taxes;
+      $purchase_tax_total = array_sum($purchase_taxes_display);
+    }
+
+    $shipping_charges = (float) ($purchase->shipping_charges ?? 0);
+    $additional_expenses = (float) ($purchase->additional_expense_value_1 ?? 0)
+      + (float) ($purchase->additional_expense_value_2 ?? 0)
+      + (float) ($purchase->additional_expense_value_3 ?? 0)
+      + (float) ($purchase->additional_expense_value_4 ?? 0);
+    $purchase_total_display = $net_total_amount - $discount_amount_display + $purchase_tax_total + $shipping_charges + $additional_expenses;
+  @endphp
   <div class="row">
     @if(!empty($purchase->type == 'purchase'))
     <div class="col-sm-12 col-xs-12">
@@ -307,15 +346,10 @@
     <div class="col-md-6 col-sm-12 col-xs-12 @if($purchase->type == 'purchase_order') col-md-offset-6 @endif">
       <div class="table-responsive">
         <table class="table">
-          <!-- <tr class="hide">
-            <th>@lang('purchase.total_before_tax'): </th>
-            <td></td>
-            <td><span class="display_currency pull-right">{{ $total_before_tax }}</span></td>
-          </tr> -->
           <tr>
             <th>@lang('purchase.net_total_amount'): </th>
             <td></td>
-            <td><span class="display_currency pull-right" data-currency_symbol="true">{{ $total_before_tax }}</span></td>
+            <td><span class="display_currency pull-right" data-currency_symbol="true">{{ $net_total_amount }}</span></td>
           </tr>
           <tr>
             <th>@lang('purchase.discount'):</th>
@@ -327,11 +361,7 @@
             </td>
             <td>
               <span class="display_currency pull-right" data-currency_symbol="true">
-                @if($purchase->discount_type == 'percentage')
-                  {{$purchase->discount_amount * $total_before_tax / 100}}
-                @else
-                  {{$purchase->discount_amount}}
-                @endif                  
+                {{ $discount_amount_display }}
               </span>
             </td>
           </tr>
@@ -339,8 +369,8 @@
             <th>@lang('purchase.purchase_tax'):</th>
             <td><b>(+)</b></td>
             <td class="text-right">
-                @if(!empty($purchase_taxes))
-                  @foreach($purchase_taxes as $k => $v)
+                @if(!empty($purchase_taxes_display))
+                  @foreach($purchase_taxes_display as $k => $v)
                     <strong><small>{{$k}}</small></strong> - <span class="display_currency pull-right" data-currency_symbol="true">{{ $v }}</span><br>
                   @endforeach
                 @else
@@ -386,7 +416,7 @@
           <tr>
             <th>@lang('purchase.purchase_total'):</th>
             <td></td>
-            <td><span class="display_currency pull-right" data-currency_symbol="true" >{{ $purchase->final_total }}</span></td>
+            <td><span class="display_currency pull-right" data-currency_symbol="true" >{{ $purchase_total_display }}</span></td>
           </tr>
         </table>
       </div>
