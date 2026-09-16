@@ -3,12 +3,17 @@
 namespace Modules\InventoryReporting\Http\Controllers;
 
 use App\Utils\ModuleUtil;
+use App\Utils\Util;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\InventoryReporting\Services\InventoryLotService;
 
 class LotController extends Controller
 {
+    public function __construct(protected Util $util)
+    {
+    }
+
     public function index(Request $request, InventoryLotService $lots)
     {
         if (! auth()->user()->can('inventoryreporting.lot_edit')) {
@@ -57,10 +62,21 @@ class LotController extends Controller
 
         $request->validate([
             'lot_number' => 'nullable|string|max:255',
-            'exp_date' => 'nullable|date',
+            'exp_date' => 'nullable|string',
         ]);
 
-        $exp = $request->input('exp_date') ? \Carbon\Carbon::parse($request->input('exp_date'))->format('Y-m-d') : null;
+        // Must use business date format (uf_date). Carbon::parse treats d/m/Y as m/d/Y.
+        $exp = null;
+        if (! empty($request->input('exp_date'))) {
+            try {
+                $exp = $this->util->uf_date($request->input('exp_date'));
+            } catch (\Throwable $e) {
+                return back()->withInput()->with('status', [
+                    'success' => 0,
+                    'msg' => __('validation.date', ['attribute' => __('product.exp_date')]),
+                ]);
+            }
+        }
 
         try {
             $lots->updateLotForPurchaseLine($business_id, $id, $request->input('lot_number'), $exp, $location_id);
