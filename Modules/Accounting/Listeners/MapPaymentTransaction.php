@@ -50,8 +50,17 @@ class MapPaymentTransaction
 
         if($transaction->type == 'purchase'){
             $type = 'purchase_payment';
+            $mapKey = 'purchase_payment';
         } elseif($transaction->type == 'sell'){
             $type = 'sell_payment';
+            $mapKey = 'sell_payment';
+        } elseif ($transaction->type == 'sell_return') {
+            // Refund on credit note: reverse of customer receipt (Dr A/R, Cr cash/bank).
+            $type = 'sell_return_payment';
+            $mapKey = 'sell_payment';
+        } elseif ($transaction->type == 'purchase_return') {
+            $type = 'purchase_return_payment';
+            $mapKey = 'purchase_payment';
         } else {
             return;
         }
@@ -61,8 +70,8 @@ class MapPaymentTransaction
         $accounting_default_map = json_decode($business_location->accounting_default_map, true);
 
         //check if default map is set or not, if set the proceed.
-        $deposit_to = isset($accounting_default_map[$type]['deposit_to']) ? $accounting_default_map[$type]['deposit_to'] : null;
-        $payment_account = isset($accounting_default_map[$type]['payment_account']) ? $accounting_default_map[$type]['payment_account'] : null;
+        $deposit_to = isset($accounting_default_map[$mapKey]['deposit_to']) ? $accounting_default_map[$mapKey]['deposit_to'] : null;
+        $payment_account = isset($accounting_default_map[$mapKey]['payment_account']) ? $accounting_default_map[$mapKey]['payment_account'] : null;
 
         if(!isset($event->isDeleted) || !$event->isDeleted){
 

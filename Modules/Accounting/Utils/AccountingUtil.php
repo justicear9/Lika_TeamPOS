@@ -83,7 +83,43 @@ class AccountingUtil extends Util
         $effectivePayTermTypeSql = $this->buildEffectivePayTermTypeSql();
         $effectivePayTermNumberSql = $this->buildEffectivePayTermNumberSql();
 
-        $dues = $query->whereIn('transactions.payment_status', ['partial', 'due'])
+        // Payments on the invoice/purchase itself.
+        $paymentsSql = '(SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0)
+            FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id)';
+
+        // Linked returns reduce what is owed (same netting as contact due / ledger).
+        if ($type == 'sell') {
+            $returnType = 'sell_return';
+            $returnStatusSql = "sr.status = 'final'";
+        } else {
+            $returnType = 'purchase_return';
+            $returnStatusSql = '1=1';
+        }
+
+        $returnsSql = '(SELECT COALESCE(SUM(sr.final_total), 0)
+            FROM transactions as sr
+            WHERE sr.return_parent_id = transactions.id
+              AND sr.type = \''.$returnType.'\'
+              AND '.$returnStatusSql.')';
+
+        $returnPaymentsSql = '(SELECT COALESCE(SUM(tp.amount), 0)
+            FROM transactions as sr
+            INNER JOIN transaction_payments as tp ON tp.transaction_id = sr.id
+            WHERE sr.return_parent_id = transactions.id
+              AND sr.type = \''.$returnType.'\'
+              AND '.$returnStatusSql.')';
+
+        // Include paid docs that still have returns so credits/refunds affect ageing.
+        $dues = $query->where(function ($q) use ($returnType, $returnStatusSql) {
+            $q->whereIn('transactions.payment_status', ['partial', 'due'])
+                ->orWhereExists(function ($sub) use ($returnType, $returnStatusSql) {
+                    $sub->select(DB::raw(1))
+                        ->from('transactions as sr')
+                        ->whereColumn('sr.return_parent_id', 'transactions.id')
+                        ->where('sr.type', $returnType)
+                        ->whereRaw($returnStatusSql);
+                });
+        })
                 ->join('contacts as c', 'c.id', '=', 'transactions.contact_id')
                 ->select(
                     DB::raw(
@@ -92,10 +128,7 @@ class AccountingUtil extends Util
                             '.$dueDateExpression.'
                         ) as diff'
                     ),
-                    DB::raw('(transactions.final_total - 
-                        (SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0) 
-                        FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id))  
-                        as total_due'),
+                    DB::raw('(transactions.final_total - '.$paymentsSql.' - '.$returnsSql.' + '.$returnPaymentsSql.') as total_due'),
                     DB::raw('CASE
                         WHEN c.name IS NOT NULL AND c.name <> "" THEN c.name
                         WHEN c.supplier_business_name IS NOT NULL AND c.supplier_business_name <> "" THEN c.supplier_business_name
@@ -117,6 +150,11 @@ class AccountingUtil extends Util
         $report_details = [];
         if ($group_by == 'contact') {
             foreach ($dues as $due) {
+                $amount = round((float) $due->total_due, 4);
+                if (abs($amount) <= self::JOURNAL_BALANCE_TOLERANCE) {
+                    continue;
+                }
+
                 if (! isset($report_details[$due->contact_id])) {
                     $report_details[$due->contact_id] = [
                         'name' => $due->contact_name,
@@ -131,7 +169,7 @@ class AccountingUtil extends Util
                 }
 
                 $daysPastDue = $this->resolveAgeingDaysPastDue($due->diff, $due->transaction_date, $due->due_date, $today);
-                $this->addToAgeingContactBuckets($report_details[$due->contact_id], (float) $due->total_due, $daysPastDue);
+                $this->addToAgeingContactBuckets($report_details[$due->contact_id], $amount, $daysPastDue);
             }
         } elseif ($group_by == 'due_date') {
             $report_details = [
@@ -142,6 +180,11 @@ class AccountingUtil extends Util
                 '>90' => [],
             ];
             foreach ($dues as $due) {
+                $amount = round((float) $due->total_due, 4);
+                if (abs($amount) <= self::JOURNAL_BALANCE_TOLERANCE) {
+                    continue;
+                }
+
                 $daysPastDue = $this->resolveAgeingDaysPastDue($due->diff, $due->transaction_date, $due->due_date, $today);
                 $temp_array = [
                     'transaction_date' => $this->format_date($due->transaction_date),
@@ -150,7 +193,7 @@ class AccountingUtil extends Util
                     'invoice_no' => $due->invoice_no,
                     'contact_name' => $due->contact_name,
                     'pay_term' => $this->formatPayTerm($due->pay_term_number, $due->pay_term_type),
-                    'due' => $due->total_due,
+                    'due' => $amount,
                 ];
                 $this->addToAgeingDetailBuckets($report_details, $temp_array, $daysPastDue);
             }
@@ -389,6 +432,19 @@ class AccountingUtil extends Util
             }
         }
 
+        if (($row->sub_type ?? null) === 'sell_return_payment') {
+            $description = '<b>'.e(__('lang_v1.sell_return')).' — '.e(__('lang_v1.payment')).'</b>';
+            if (trim((string) ($row->invoice_no ?? '')) !== '') {
+                $description .= '<br>'.e(__('sale.invoice_no')).': '.e((string) $row->invoice_no);
+            }
+            if (trim((string) ($row->payment_ref_no ?? '')) !== '') {
+                $description .= '<br>'.e(__('accounting::lang.ledger_payment_reference')).': '.e((string) $row->payment_ref_no);
+            }
+            if (trim((string) ($row->aat_note ?? '')) !== '') {
+                $description .= '<br>'.e(__('lang_v1.description')).': '.e((string) $row->aat_note);
+            }
+        }
+
         if (($row->sub_type ?? null) === 'purchase_payment') {
             $description = '<b>'.e(__('accounting::lang.ledger_payment_purchase')).'</b>';
             if (trim((string) ($row->ref_no ?? '')) !== '') {
@@ -519,7 +575,7 @@ class AccountingUtil extends Util
             } elseif ($subType === 'inv_stock_transfer' && $user->can('purchase.view')) {
                 $href = action([StockTransferController::class, 'show'], $sourceTxnId);
                 $loadInViewModal = true;
-            } elseif ($subType === 'sell_return' && ($user->can('access_sell_return') || $user->can('access_own_sell_return'))) {
+            } elseif (in_array($subType, ['sell_return', 'sell_return_payment'], true) && ($user->can('access_sell_return') || $user->can('access_own_sell_return'))) {
                 $href = action([SellReturnController::class, 'show'], $sourceTxnId);
                 $loadInViewModal = true;
             }
@@ -1245,7 +1301,7 @@ class AccountingUtil extends Util
                 'operation_date' => $operation_date,
                 'location_id' => $location_id,
             ];
-        } elseif (in_array($type, ['purchase_payment', 'sell_payment'])) {
+        } elseif (in_array($type, ['purchase_payment', 'sell_payment', 'sell_return_payment', 'purchase_return_payment'])) {
             $transaction_payment = TransactionPayment::where('id', $id)->where('business_id', $business_id)
                 ->firstOrFail();
             $transaction = Transaction::where('business_id', $business_id)->where('id', $transaction_payment->transaction_id)->firstOrFail();
@@ -1257,12 +1313,17 @@ class AccountingUtil extends Util
                 return false;
             }
 
+            // Customer/supplier refunds reverse the normal receipt/payment sides.
+            $isReturnPayment = in_array($type, ['sell_return_payment', 'purchase_return_payment'], true);
+            $paymentSide = $isReturnPayment ? 'debit' : 'credit';
+            $depositSide = $isReturnPayment ? 'credit' : 'debit';
+
             $payment_data = [
                 'accounting_account_id' => $payment_account,
                 'transaction_id' => null,
                 'transaction_payment_id' => $id,
                 'amount' => $transaction_payment->amount,
-                'type' => 'credit',
+                'type' => $paymentSide,
                 'sub_type' => $type,
                 'note' => $note,
                 'map_type' => 'payment_account',
@@ -1276,7 +1337,7 @@ class AccountingUtil extends Util
                 'transaction_id' => null,
                 'transaction_payment_id' => $id,
                 'amount' => $transaction_payment->amount,
-                'type' => 'debit',
+                'type' => $depositSide,
                 'sub_type' => $type,
                 'note' => $note,
                 'map_type' => 'deposit_to',
