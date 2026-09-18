@@ -6223,6 +6223,13 @@ class TransactionUtil extends Util
         //Update payment status
         $this->updatePaymentStatus($sell_return->id, $sell_return->final_total);
 
+        // Credit note vs cash refund:
+        // If the parent invoice still has receivable, the return reduces what the customer owes
+        // (already a ledger credit). Mark it paid so staff aren't prompted to "pay" the return —
+        // that payment means cash refund and posts a ledger debit that undoes the credit.
+        // Only leave the return due when the parent is already fully paid (true refund owed).
+        $this->settleSellReturnAsCreditNoteIfApplicable($sell, $sell_return);
+
         //Update quantity returned in sell line
         $returns = [];
         $product_lines = $input['products'];
@@ -6260,7 +6267,25 @@ class TransactionUtil extends Util
             }
         }
 
-        return $sell_return;
+        return $sell_return->fresh();
+    }
+
+    /**
+     * When a return is against an unpaid/partial invoice, settle it as a credit note (no cash refund due).
+     */
+    public function settleSellReturnAsCreditNoteIfApplicable(Transaction $parentSell, Transaction $sellReturn): void
+    {
+        if ($sellReturn->type !== 'sell_return' || $sellReturn->status !== 'final') {
+            return;
+        }
+
+        $parentPaid = round((float) $this->getTotalPaid($parentSell->id), 2);
+        $parentDue = round((float) $parentSell->final_total - $parentPaid, 2);
+
+        if ($parentDue > 0) {
+            $sellReturn->payment_status = 'paid';
+            $sellReturn->save();
+        }
     }
 
     /**
@@ -6294,6 +6319,8 @@ class TransactionUtil extends Util
 
         $this->updatePaymentStatus($sell_return->id, $sell_return->final_total);
 
+        $this->settleSellReturnAsCreditNoteIfApplicable($sell, $sell_return);
+
         $returns = [];
         $product_lines = $input['products'];
         $parent_sell_lines = $sell->sell_lines->values();
@@ -6312,7 +6339,7 @@ class TransactionUtil extends Util
             if (array_key_exists($sell_line->id, $returns)) {
                 $multiplier = 1;
                 if (! empty($sell_line->sub_unit)) {
-                    $multiplier = $sell_line->sub_unit->base_unit_multiplier;
+                    $multiplier = ! empty($sell_line->sub_unit->base_unit_multiplier) ? $sell_line->sub_unit->base_unit_multiplier : 1;
                 }
 
                 $quantity = $returns[$sell_line->id] * $multiplier;
@@ -6328,7 +6355,7 @@ class TransactionUtil extends Util
             }
         }
 
-        return $sell_return;
+        return $sell_return->fresh();
     }
 
     public function updatePurchaseOrderStatus($purchase_order_ids = [])
