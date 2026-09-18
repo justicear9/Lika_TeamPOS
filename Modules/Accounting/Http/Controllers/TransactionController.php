@@ -153,16 +153,23 @@ class TransactionController extends Controller
                     }
                 )
                 ->addColumn('total_remaining', function ($row) {
-                    $total_remaining = $row->final_total - $row->total_paid;
+                    // Net of linked sales returns (same basis as AR ageing / contact due).
+                    $total_remaining = (float) $row->final_total - (float) $row->total_paid;
+                    if (! empty($row->return_exists)) {
+                        $total_remaining -= ((float) ($row->amount_return ?? 0) - (float) ($row->return_paid ?? 0));
+                    }
                     $total_remaining_html = '<span class="payment_due" data-orig-value="'.$total_remaining.'">'.$this->transactionUtil->num_f($total_remaining, true).'</span>';
 
                     return $total_remaining_html;
                 })
-                ->addColumn('total_remaining', function ($row) {
-                    $total_remaining = $row->final_total - $row->total_paid;
-                    $total_remaining_html = '<span class="payment_due" data-orig-value="'.$total_remaining.'">'.$this->transactionUtil->num_f($total_remaining, true).'</span>';
+                ->addColumn('return_due', function ($row) {
+                    $return_due_html = '';
+                    if (! empty($row->return_exists)) {
+                        $return_due = (float) ($row->amount_return ?? 0) - (float) ($row->return_paid ?? 0);
+                        $return_due_html .= '<span class="sell_return_due" data-orig-value="'.$return_due.'">'.$this->transactionUtil->num_f($return_due, true).'</span>';
+                    }
 
-                    return $total_remaining_html;
+                    return $return_due_html;
                 })
                 ->editColumn('invoice_no', function ($row) {
                     $invoice_no = $row->invoice_no;
@@ -391,7 +398,10 @@ class TransactionController extends Controller
                     }
                 )
                 ->addColumn('payment_due', function ($row) {
-                    $due = $row->final_total - $row->amount_paid;
+                    $due = (float) $row->final_total - (float) $row->amount_paid;
+                    if (! empty($row->return_exists)) {
+                        $due -= ((float) ($row->amount_return ?? 0) - (float) ($row->return_paid ?? 0));
+                    }
                     $due_html = '<strong>'.__('lang_v1.purchase').':</strong> <span class="payment_due" data-orig-value="'.$due.'">'.$this->transactionUtil->num_f($due, true).'</span>';
 
                     if (! empty($row->return_exists)) {

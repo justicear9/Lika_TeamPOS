@@ -65,87 +65,15 @@ class AccountingUtil extends Util
     public function getAgeingReport($business_id, $type, $group_by, $location_id = null)
     {
         $today = \Carbon::now()->format('Y-m-d');
-        $query = Transaction::where('transactions.business_id', $business_id);
 
-        if ($type == 'sell') {
-            $query->where('transactions.type', 'sell')
-            ->where('transactions.status', 'final');
-        } elseif ($type == 'purchase') {
-            $query->where('transactions.type', 'purchase')
-                ->where('transactions.status', 'received');
+        $dues = $this->queryAgeingDocuments((int) $business_id, $type, $location_id !== null ? (int) $location_id : null, $today);
+
+        // Customer opening balances also affect receivables / contact due.
+        if ($type === 'sell') {
+            $dues = $dues->concat(
+                $this->queryAgeingOpeningBalances((int) $business_id, $location_id !== null ? (int) $location_id : null, $today)
+            );
         }
-
-        if (! empty($location_id)) {
-            $query->where('transactions.location_id', $location_id);
-        }
-
-        $dueDateExpression = $this->buildAgeingDueDateSqlExpression();
-        $effectivePayTermTypeSql = $this->buildEffectivePayTermTypeSql();
-        $effectivePayTermNumberSql = $this->buildEffectivePayTermNumberSql();
-
-        // Payments on the invoice/purchase itself.
-        $paymentsSql = '(SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0)
-            FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id)';
-
-        // Linked returns reduce what is owed (same netting as contact due / ledger).
-        if ($type == 'sell') {
-            $returnType = 'sell_return';
-            $returnStatusSql = "sr.status = 'final'";
-        } else {
-            $returnType = 'purchase_return';
-            $returnStatusSql = '1=1';
-        }
-
-        $returnsSql = '(SELECT COALESCE(SUM(sr.final_total), 0)
-            FROM transactions as sr
-            WHERE sr.return_parent_id = transactions.id
-              AND sr.type = \''.$returnType.'\'
-              AND '.$returnStatusSql.')';
-
-        $returnPaymentsSql = '(SELECT COALESCE(SUM(tp.amount), 0)
-            FROM transactions as sr
-            INNER JOIN transaction_payments as tp ON tp.transaction_id = sr.id
-            WHERE sr.return_parent_id = transactions.id
-              AND sr.type = \''.$returnType.'\'
-              AND '.$returnStatusSql.')';
-
-        // Include paid docs that still have returns so credits/refunds affect ageing.
-        $dues = $query->where(function ($q) use ($returnType, $returnStatusSql) {
-            $q->whereIn('transactions.payment_status', ['partial', 'due'])
-                ->orWhereExists(function ($sub) use ($returnType, $returnStatusSql) {
-                    $sub->select(DB::raw(1))
-                        ->from('transactions as sr')
-                        ->whereColumn('sr.return_parent_id', 'transactions.id')
-                        ->where('sr.type', $returnType)
-                        ->whereRaw($returnStatusSql);
-                });
-        })
-                ->join('contacts as c', 'c.id', '=', 'transactions.contact_id')
-                ->select(
-                    DB::raw(
-                        'DATEDIFF(
-                            "'.$today.'", 
-                            '.$dueDateExpression.'
-                        ) as diff'
-                    ),
-                    DB::raw('(transactions.final_total - '.$paymentsSql.' - '.$returnsSql.' + '.$returnPaymentsSql.') as total_due'),
-                    DB::raw('CASE
-                        WHEN c.name IS NOT NULL AND c.name <> "" THEN c.name
-                        WHEN c.supplier_business_name IS NOT NULL AND c.supplier_business_name <> "" THEN c.supplier_business_name
-                        ELSE CONCAT("Contact #", COALESCE(transactions.contact_id, 0))
-                    END as contact_name'),
-                    'transactions.id as transaction_id',
-                    'transactions.contact_id',
-                    'transactions.invoice_no',
-                    'transactions.ref_no',
-                    'transactions.transaction_date',
-                    DB::raw($dueDateExpression.' as due_date'),
-                    'c.pay_term_number as contact_pay_term_number',
-                    'c.pay_term_type as contact_pay_term_type',
-                    DB::raw($effectivePayTermNumberSql.' as pay_term_number'),
-                    DB::raw($effectivePayTermTypeSql.' as pay_term_type')
-                )
-                ->get();
 
         $report_details = [];
         if ($group_by == 'contact') {
@@ -171,6 +99,20 @@ class AccountingUtil extends Util
                 $daysPastDue = $this->resolveAgeingDaysPastDue($due->diff, $due->transaction_date, $due->due_date, $today);
                 $this->addToAgeingContactBuckets($report_details[$due->contact_id], $amount, $daysPastDue);
             }
+
+            // Drop contacts that net to zero after returns/credits; keep bucket sum as total.
+            foreach ($report_details as $contactId => $row) {
+                $bucketSum = round(
+                    (float) $row['<1'] + (float) $row['1_30'] + (float) $row['31_60']
+                    + (float) $row['61_90'] + (float) $row['>90'],
+                    4
+                );
+                if (abs($bucketSum) <= self::JOURNAL_BALANCE_TOLERANCE) {
+                    unset($report_details[$contactId]);
+                    continue;
+                }
+                $report_details[$contactId]['total_due'] = $bucketSum;
+            }
         } elseif ($group_by == 'due_date') {
             $report_details = [
                 'current' => [],
@@ -194,12 +136,203 @@ class AccountingUtil extends Util
                     'contact_name' => $due->contact_name,
                     'pay_term' => $this->formatPayTerm($due->pay_term_number, $due->pay_term_type),
                     'due' => $amount,
+                    'document_type' => $due->document_type ?? $type,
                 ];
                 $this->addToAgeingDetailBuckets($report_details, $temp_array, $daysPastDue);
             }
         }
 
         return $report_details;
+    }
+
+    /**
+     * Outstanding sell/purchase documents for ageing, net of linked returns (contact-due semantics).
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    protected function queryAgeingDocuments(int $business_id, string $type, ?int $location_id, string $today)
+    {
+        $query = Transaction::where('transactions.business_id', $business_id);
+
+        if ($type == 'sell') {
+            $query->where('transactions.type', 'sell')
+                ->where('transactions.status', 'final');
+            $returnType = 'sell_return';
+            $returnStatusSql = "(sr.status = 'final' OR sr.status IS NULL OR sr.status = '')";
+        } elseif ($type == 'purchase') {
+            $query->where('transactions.type', 'purchase')
+                ->where('transactions.status', 'received');
+            $returnType = 'purchase_return';
+            $returnStatusSql = '1=1';
+        } else {
+            return collect();
+        }
+
+        if (! empty($location_id)) {
+            $query->where('transactions.location_id', $location_id);
+        }
+
+        $dueDateExpression = $this->buildAgeingDueDateSqlExpression();
+        $effectivePayTermTypeSql = $this->buildEffectivePayTermTypeSql();
+        $effectivePayTermNumberSql = $this->buildEffectivePayTermNumberSql();
+        $outstandingSql = $this->buildAgeingOutstandingSql($returnType, $returnStatusSql);
+
+        return $query->where(function ($q) use ($returnType, $returnStatusSql) {
+            $q->whereIn('transactions.payment_status', ['partial', 'due'])
+                ->orWhereExists(function ($sub) use ($returnType, $returnStatusSql) {
+                    $sub->select(DB::raw(1))
+                        ->from('transactions as sr')
+                        ->whereColumn('sr.return_parent_id', 'transactions.id')
+                        ->where('sr.type', $returnType)
+                        ->whereRaw($returnStatusSql);
+                });
+        })
+            ->join('contacts as c', 'c.id', '=', 'transactions.contact_id')
+            ->select(
+                DB::raw('DATEDIFF("'.$today.'", '.$dueDateExpression.') as diff'),
+                DB::raw($outstandingSql.' as total_due'),
+                DB::raw('CASE
+                    WHEN c.name IS NOT NULL AND c.name <> "" THEN c.name
+                    WHEN c.supplier_business_name IS NOT NULL AND c.supplier_business_name <> "" THEN c.supplier_business_name
+                    ELSE CONCAT("Contact #", COALESCE(transactions.contact_id, 0))
+                END as contact_name'),
+                'transactions.id as transaction_id',
+                'transactions.contact_id',
+                'transactions.invoice_no',
+                'transactions.ref_no',
+                'transactions.transaction_date',
+                DB::raw($dueDateExpression.' as due_date'),
+                'c.pay_term_number as contact_pay_term_number',
+                'c.pay_term_type as contact_pay_term_type',
+                DB::raw($effectivePayTermNumberSql.' as pay_term_number'),
+                DB::raw($effectivePayTermTypeSql.' as pay_term_type'),
+                DB::raw("'".$type."' as document_type")
+            )
+            ->get();
+    }
+
+    /**
+     * Unpaid customer opening balances for AR ageing.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    protected function queryAgeingOpeningBalances(int $business_id, ?int $location_id, string $today)
+    {
+        $query = Transaction::where('transactions.business_id', $business_id)
+            ->where('transactions.type', 'opening_balance')
+            ->whereIn('transactions.payment_status', ['partial', 'due']);
+
+        if (! empty($location_id)) {
+            $query->where('transactions.location_id', $location_id);
+        }
+
+        $paymentsSql = '(SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0)
+            FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id)';
+
+        return $query->join('contacts as c', 'c.id', '=', 'transactions.contact_id')
+            ->whereIn('c.type', ['customer', 'both'])
+            ->select(
+                DB::raw('DATEDIFF("'.$today.'", DATE(transactions.transaction_date)) as diff'),
+                DB::raw('(transactions.final_total - '.$paymentsSql.') as total_due'),
+                DB::raw('CASE
+                    WHEN c.name IS NOT NULL AND c.name <> "" THEN c.name
+                    WHEN c.supplier_business_name IS NOT NULL AND c.supplier_business_name <> "" THEN c.supplier_business_name
+                    ELSE CONCAT("Contact #", COALESCE(transactions.contact_id, 0))
+                END as contact_name'),
+                'transactions.id as transaction_id',
+                'transactions.contact_id',
+                'transactions.invoice_no',
+                'transactions.ref_no',
+                'transactions.transaction_date',
+                DB::raw('DATE(transactions.transaction_date) as due_date'),
+                'c.pay_term_number as contact_pay_term_number',
+                'c.pay_term_type as contact_pay_term_type',
+                'c.pay_term_number as pay_term_number',
+                'c.pay_term_type as pay_term_type',
+                DB::raw("'opening_balance' as document_type")
+            )
+            ->get();
+    }
+
+    /**
+     * invoice/purchase due net of payments and linked returns (+ return refunds), matching getContactDue.
+     */
+    protected function buildAgeingOutstandingSql(string $returnType, string $returnStatusSql): string
+    {
+        $paymentsSql = '(SELECT COALESCE(SUM(IF(tp.is_return = 1, -1*tp.amount, tp.amount)), 0)
+            FROM transaction_payments as tp WHERE tp.transaction_id = transactions.id)';
+
+        $returnsSql = '(SELECT COALESCE(SUM(sr.final_total), 0)
+            FROM transactions as sr
+            WHERE sr.return_parent_id = transactions.id
+              AND sr.type = \''.$returnType.'\'
+              AND '.$returnStatusSql.')';
+
+        $returnPaymentsSql = '(SELECT COALESCE(SUM(tp.amount), 0)
+            FROM transactions as sr
+            INNER JOIN transaction_payments as tp ON tp.transaction_id = sr.id
+            WHERE sr.return_parent_id = transactions.id
+              AND sr.type = \''.$returnType.'\'
+              AND '.$returnStatusSql.')';
+
+        return '(transactions.final_total - '.$paymentsSql.' - '.$returnsSql.' + '.$returnPaymentsSql.')';
+    }
+
+    /**
+     * Net outstanding for a sell/purchase after linked returns (for lists / payment status).
+     */
+    public function getDocumentOutstandingDue(int $transactionId): float
+    {
+        $transaction = Transaction::find($transactionId);
+        if (! $transaction) {
+            return 0.0;
+        }
+
+        $payments = (float) DB::table('transaction_payments')
+            ->where('transaction_id', $transactionId)
+            ->selectRaw('COALESCE(SUM(IF(is_return = 1, -1*amount, amount)), 0) as paid')
+            ->value('paid');
+
+        $returnType = $transaction->type === 'purchase' ? 'purchase_return' : 'sell_return';
+        $returnsQuery = Transaction::where('return_parent_id', $transactionId)->where('type', $returnType);
+        if ($returnType === 'sell_return') {
+            $returnsQuery->where(function ($q) {
+                $q->where('status', 'final')->orWhereNull('status')->orWhere('status', '');
+            });
+        }
+        $returns = $returnsQuery->get(['id', 'final_total']);
+        $returnTotal = (float) $returns->sum('final_total');
+        $returnPaid = $returns->isEmpty()
+            ? 0.0
+            : (float) DB::table('transaction_payments')->whereIn('transaction_id', $returns->pluck('id'))->sum('amount');
+
+        return round((float) $transaction->final_total - $payments - $returnTotal + $returnPaid, 4);
+    }
+
+    /**
+     * After a sales return, refresh parent invoice payment_status from net outstanding (incl. returns).
+     */
+    public function refreshParentPaymentStatusAfterReturn(Transaction $parentSell): void
+    {
+        if ($parentSell->type !== 'sell') {
+            return;
+        }
+
+        $outstanding = $this->getDocumentOutstandingDue((int) $parentSell->id);
+        $final = round((float) $parentSell->final_total, 4);
+
+        if ($outstanding <= self::JOURNAL_BALANCE_TOLERANCE) {
+            $status = 'paid';
+        } elseif ($outstanding + self::JOURNAL_BALANCE_TOLERANCE < $final) {
+            $status = 'partial';
+        } else {
+            $status = 'due';
+        }
+
+        if ($parentSell->payment_status !== $status) {
+            $parentSell->payment_status = $status;
+            $parentSell->save();
+        }
     }
 
     /**

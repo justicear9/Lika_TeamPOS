@@ -98,7 +98,11 @@
                                         {{$details['transaction_date']}}
                                     </td>
                                     <td>
-                                        @lang( 'accounting::lang.invoice' )
+                                        @if(($details['document_type'] ?? '') === 'opening_balance')
+                                            @lang('lang_v1.opening_balance')
+                                        @else
+                                            @lang( 'accounting::lang.invoice' )
+                                        @endif
                                     </td>
                                     <td>
                                         {{$details['invoice_no']}}
@@ -140,6 +144,20 @@
                             </tr>
                         </tbody>
                         @endforeach
+                        @php
+                            $ageing_grand_total = 0;
+                            foreach ($report_details as $bucket_rows) {
+                                foreach ($bucket_rows as $details) {
+                                    $ageing_grand_total += $details['due'];
+                                }
+                            }
+                        @endphp
+                        <tfoot>
+                            <tr>
+                                <th colspan="6">@lang('sale.total')</th>
+                                <th>@format_currency($ageing_grand_total)</th>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>

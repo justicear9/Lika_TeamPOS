@@ -64,7 +64,8 @@ class MapSalesReturnTransaction
                         ->where('type', 'sell')
                         ->first();
                     if ($parent) {
-                        $util->saveInventoryMapForSell($parent, $uid);
+                        $util->refreshParentPaymentStatusAfterReturn($parent);
+                        $util->saveInventoryMapForSell($parent->fresh(), $uid);
                     }
                 }
             }
